@@ -1,14 +1,23 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = "sqlite:///./inventory.db"
+# Localmente, usa o banco atual na raiz do projeto.
+# Na Railway, usará o valor definido na variável DATABASE_URL.
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
+
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False, "timeout": 30}
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
- )
+    connect_args=connect_args,
+)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
 
 def get_db():
     db = SessionLocal()

@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 inventory.db
 .env
+
+# Cópias locais do banco de dados — nunca enviar ao repositório
+backups/
+.DS_Store
+*.db.backup.*

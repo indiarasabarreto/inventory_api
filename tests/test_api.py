@@ -70,6 +70,7 @@ def test_create_category_and_product(client: TestClient):
             "sku": "TEC-MEC-001",
             "unit_price": "299.90",
             "quantity": 10,
+            "minimum_quantity": 3,
             "category_id": category_id,
         }
     ]

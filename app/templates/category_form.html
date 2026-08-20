@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nova categoria | Almoxarifado</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+  </head>
+  <body>
+      <header class="app-header">
+        <div class="brand-lockup">
+          <img
+            class="terreiro-logo"
+            src="{{ url_for('static', path='logo_tuepa.png') }}"
+            alt="Logo do terreiro"
+          >
+          <div>
+            <p class="eyebrow">Terreiro</p>
+            <strong>Estoque</strong>
+          </div>
+        </div>
+      <a class="text-link" href="/warehouse">Voltar ao estoque</a>
+    </header>
+    <main class="page-shell warehouse-shell">
+      <section class="form-card">
+        <p class="eyebrow">Organização</p>
+        <h1>Nova categoria</h1>
+        <p>Crie um grupo para organizar novos itens do almoxarifado.</p>
+
+        {% if error %}
+          <p class="form-error">{{ error }}</p>
+        {% endif %}
+
+        <form method="post" action="/warehouse/categories/new">
+          <label for="name">Nome da categoria</label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            minlength="2"
+            maxlength="100"
+            placeholder="Ex.: Ervas e folhas"
+            required
+            autofocus
+          >
+          <button type="submit">Cadastrar categoria</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

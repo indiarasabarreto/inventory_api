@@ -3,7 +3,6 @@ from decimal import Decimal
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class CategoryCreate(BaseModel):
     name: str = Field(
         min_length=2,
@@ -11,13 +10,11 @@ class CategoryCreate(BaseModel):
         examples=["Eletrônicos"],
     )
 
-
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-
 
 class ProductCreate(BaseModel):
     name: str = Field(
@@ -32,17 +29,23 @@ class ProductCreate(BaseModel):
     )
     unit_price: Decimal = Field(gt=0, examples=[299.90])
     quantity: int = Field(default=0, ge=0, examples=[10])
+    minimum_quantity: int = Field(default=3, ge=0, examples=[3])
     category_id: int = Field(gt=0, examples=[1])
 
-
+class ProductUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    sku: str = Field(min_length=3, max_length=60)
+    unit_price: Decimal = Field(gt=0)
+    category_id: int = Field(gt=0)
+    minimum_quantity: int = Field(default=3, ge=0, examples=[3])
 class ProductResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: int
     name: str
     sku: str
     unit_price: Decimal
     quantity: int
+    minimum_quantity: int
     category_id: int
 
 class StockMovementCreate(BaseModel):

@@ -29,6 +29,11 @@ class Product(Base):
         nullable=False,
     )
     quantity: Mapped[int] = mapped_column(default=0, nullable=False)
+    minimum_quantity: Mapped[int] = mapped_column(
+        default=3,
+        server_default="3",
+        nullable=False,
+    )     
     category_id: Mapped[int] = mapped_column(
         ForeignKey("categories.id"),
         nullable=False,
