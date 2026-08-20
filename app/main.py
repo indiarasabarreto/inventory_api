@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 import app.models
-from app.database import Base, engine, get_db
+from app.database import Base, DATABASE_URL, engine, get_db
 from app.models import Category, Product, StockMovement
 from app.schemas import (
     CategoryCreate, 
@@ -31,7 +31,11 @@ from app.schemas import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # No SQLite local, mantém a criação automática usada durante o desenvolvimento.
+    # No PostgreSQL da nuvem, as tabelas serão criadas somente pelo Alembic.
+    if DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+
     yield
 
 
