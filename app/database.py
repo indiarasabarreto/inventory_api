@@ -6,6 +6,12 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # Localmente, usa o banco atual na raiz do projeto.
 # Na Railway, usará o valor definido na variável DATABASE_URL.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
+REQUIRE_POSTGRESQL = os.getenv("REQUIRE_POSTGRESQL", "false").lower() == "true"
+
+if REQUIRE_POSTGRESQL and not DATABASE_URL.startswith("postgresql"):
+    raise RuntimeError(
+        "REQUIRE_POSTGRESQL=true exige uma DATABASE_URL PostgreSQL válida."
+    )
 
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace(
