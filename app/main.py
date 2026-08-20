@@ -60,6 +60,11 @@ app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
 
+@app.get("/", include_in_schema=False)
+def home():
+    return RedirectResponse(url="/login", status_code=303)
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}

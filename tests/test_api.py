@@ -121,3 +121,10 @@ def test_negative_stock_is_rejected_without_changing_quantity(client: TestClient
 
     history = client.get(f"/products/{product_id}/movements").json()
     assert history == []
+
+
+def test_root_redirects_to_login(client: TestClient):
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
