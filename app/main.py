@@ -66,8 +66,16 @@ def home():
 
 
 @app.get("/health")
-def health_check():
-    return {"status": "ok"}
+def health_check(db: Session = Depends(get_db)):
+    return {
+        "status": "ok",
+        "database_backend": engine.url.get_backend_name(),
+        "counts": {
+            "categories": db.scalar(select(func.count(Category.id))),
+            "products": db.scalar(select(func.count(Product.id))),
+            "stock_movements": db.scalar(select(func.count(StockMovement.id))),
+            },
+        }
 
 
 @app.post(

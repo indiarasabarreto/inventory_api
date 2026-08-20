@@ -128,3 +128,17 @@ def test_root_redirects_to_login(client: TestClient):
 
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+
+def test_health_reports_database_diagnostics(client: TestClient):
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["status"] == "ok"
+    assert data["database_backend"] == "sqlite"
+    assert set(data["counts"]) == {
+        "categories",
+        "products",
+        "stock_movements",
+    }
