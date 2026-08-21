@@ -1,8 +1,6 @@
 import os
 
 from contextlib import asynccontextmanager
-
-from decimal import Decimal
 from pathlib import Path
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -19,7 +17,8 @@ import app.models
 from app.database import Base, DATABASE_URL, engine, get_db
 from app.models import Category, Product, StockMovement
 from app.schemas import (
-    CategoryCreate, 
+    CategoryCreate,
+    CategoryUpdate,
     CategoryResponse,
     ProductCreate,
     ProductResponse,
@@ -112,32 +111,51 @@ def list_categories(db: Session = Depends(get_db)):
         select(Category).order_by(Category.name)
     ).all()
 
-
-@app.post(
-    "/categories",
+@app.put(
+    "/categories/{category_id}",
     response_model=CategoryResponse,
-    status_code=status.HTTP_201_CREATED,
 )
-def create_category(
-    category_data: CategoryCreate,
+def update_category(
+    category_id: int,
+    category_data: CategoryUpdate,
     db: Session = Depends(get_db),
 ):
+    category = db.get(Category, category_id)
+
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Categoria não encontrada.",
+        )
+
+    normalized_name = category_data.name.strip()
+
+    if len(normalized_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Informe um nome com pelo menos 2 caracteres.",
+        )
+
     existing_category = db.scalar(
-        select(Category).where(Category.name == category_data.name)
+        select(Category).where(
+            func.lower(Category.name) == normalized_name.lower(),
+            Category.id != category_id,
+        )
     )
 
     if existing_category:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Category already exists.",
+            detail="Já existe uma categoria com este nome.",
         )
 
-    category = Category(name=category_data.name)
-    db.add(category)
+    category.name = normalized_name
     db.commit()
     db.refresh(category)
 
     return category
+
+
 
 @app.post(
     "/products",
@@ -156,15 +174,6 @@ def create_product(
             detail="Category not found.",
         )
 
-    existing_product = db.scalar(
-        select(Product).where(Product.sku == product_data.sku)
-    )
-
-    if existing_product:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="SKU already exists.",
-        )
 
     product = Product(**product_data.model_dump())
     db.add(product)
@@ -342,30 +351,45 @@ def update_product(
             detail="Categoria não existente.",
         )
 
-    sku_in_use = db.scalar(
-        select(Product).where(
-            Product.sku == product_data.sku,
-            Product.id != product_id,
-        )
-    )
-
-    if sku_in_use:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="SKU já está em uso por outro produto.",
-        )
-
-    product.name = product_data.name
-    product.sku = product_data.sku
-    product.unit_price = product_data.unit_price
+    product.name = product_data.name.strip()
     product.category_id = product_data.category_id
     product.minimum_quantity = product_data.minimum_quantity
-
 
     db.commit()
     db.refresh(product)
 
     return product
+
+
+@app.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+):
+    product = db.get(Product, product_id)
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produto não encontrado.",
+        )
+
+    movement_count = db.scalar(
+        select(func.count(StockMovement.id)).where(
+            StockMovement.product_id == product_id
+        )
+    )
+
+    if movement_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não é possível remover um item que possui movimentações.",
+        )
+
+    db.delete(product)
+    db.commit()
+
+
 
 @app.get('/warehouse/movement/{movement_type}', response_class=HTMLResponse)
 def movement_form(
@@ -389,66 +413,81 @@ def movement_form(
     )
 
 
-@app.post("/warehouse/movement/{movement_type}")
-def submit_movement(
-    movement_type: str,
+@app.post("/warehouse/products/new", response_class=HTMLResponse)
+def submit_new_product(
     request: Request,
-    product_id: int = Form(...),
-    quantity: int = Form(...),
+    name: str = Form(...),
+    initial_quantity: int = Form(0),
+    minimum_quantity: int = Form(3),
+    category_id: int = Form(...),
     db: Session = Depends(get_db),
 ):
-
     if not request.session.get("warehouse_access"):
         return redirect_to_login()
 
-    if movement_type not in {"in", "out"}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    values = {
+        "name": name,
+        "initial_quantity": initial_quantity,
+        "minimum_quantity": minimum_quantity,
+        "category_id": category_id,
+    }
 
-    product = db.get(Product, product_id)
+    normalized_name = name.strip()
 
-    if product is None:
-        request.session["notice"] = "Item não encontrado."
-        return RedirectResponse(
-            url=f"/warehouse/movement/{movement_type}",
-            status_code=303,
+    if len(normalized_name) < 2:
+        return render_new_product_form(
+            request,
+            db,
+            error="Informe um nome com pelo menos 2 caracteres.",
+            values=values,
+            status_code=422,
         )
 
-    if quantity <= 0:
-        request.session["notice"] = "Informe uma quantidade maior que zero."
-        return RedirectResponse(
-            url=f"/warehouse/movement/{movement_type}",
-            status_code=303,
+    if initial_quantity < 0 or minimum_quantity < 0:
+        return render_new_product_form(
+            request,
+            db,
+            error="As quantidades não podem ser negativas.",
+            values=values,
+            status_code=422,
         )
 
-    if movement_type == "out" and quantity > product.quantity:
-        request.session["notice"] = (
-            f"Saldo insuficiente para retirar {quantity} unidade(s) de {product.name}"
-        )
-        return RedirectResponse(
-            url=f"/warehouse/movement/{movement_type}",
-            status_code=303,
+    category = db.get(Category, category_id)
+
+    if category is None:
+        return render_new_product_form(
+            request,
+            db,
+            error="Selecione uma categoria válida.",
+            values=values,
+            status_code=404,
         )
 
-    if movement_type == "in":
-        product.quantity += quantity
-        action_label = "Entrada"
-    else:
-        product.quantity -= quantity
-        action_label = "Saída"
-
-    movememt = StockMovement(
-        product_id=product.id,
-        movement_type=movement_type,
-        quantity=quantity,
+    product = Product(
+        name=normalized_name,
+        quantity=0,
+        minimum_quantity=minimum_quantity,
+        category_id=category_id,
     )
-    db.add(movememt)
+    db.add(product)
+    db.flush()
+
+    if initial_quantity > 0:
+        db.add(
+            StockMovement(
+                product_id=product.id,
+                movement_type="in",
+                quantity=initial_quantity,
+            )
+        )
+        product.quantity = initial_quantity
+
     db.commit()
 
-    request.session["notice"] = (
-        f"{action_label} de {quantity} unidade(s) de {product.name} registrada."
-    )
-
+    request.session["notice"] = f"Item {product.name} cadastrado com sucesso."
     return RedirectResponse(url="/warehouse", status_code=303)
+
+
 
 @app.get("/warehouse/categories/new", response_class=HTMLResponse)
 def new_category_form(request: Request):
@@ -500,6 +539,114 @@ def submit_new_category(
     request.session["notice"] = f"Categoria {category.name} cadastrada com sucesso."
     return RedirectResponse(url="/warehouse", status_code=303)
 
+@app.get("/warehouse/categories/{category_id}/edit", response_class=HTMLResponse)
+def edit_category_form(
+    category_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    category = db.get(Category, category_id)
+
+    if category is None:
+        request.session["category_notice"] = "Categoria não encontrada."
+        request.session["category_notice_kind"] = "warning"
+        return RedirectResponse(url="/warehouse/categories", status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="category_edit_form.html",
+        context={"category": category, "error": None, "values": {}},
+    )
+
+
+@app.post("/warehouse/categories/{category_id}/edit", response_class=HTMLResponse)
+def submit_edit_category(
+    category_id: int,
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    category = db.get(Category, category_id)
+
+    if category is None:
+        request.session["category_notice"] = "Categoria não encontrada."
+        request.session["category_notice_kind"] = "warning"
+        return RedirectResponse(url="/warehouse/categories", status_code=303)
+
+    normalized_name = name.strip()
+
+    if len(normalized_name) < 2:
+        return templates.TemplateResponse(
+            request=request,
+            name="category_edit_form.html",
+            context={
+                "category": category,
+                "error": "Informe um nome com pelo menos 2 caracteres.",
+                "values": {"name": name},
+            },
+            status_code=422,
+        )
+
+    existing_category = db.scalar(
+        select(Category).where(
+            func.lower(Category.name) == normalized_name.lower(),
+            Category.id != category_id,
+        )
+    )
+
+    if existing_category:
+        return templates.TemplateResponse(
+            request=request,
+            name="category_edit_form.html",
+            context={
+                "category": category,
+                "error": "Já existe uma categoria com este nome.",
+                "values": {"name": name},
+            },
+            status_code=409,
+        )
+
+    category.name = normalized_name
+    db.commit()
+
+    request.session["category_notice"] = (
+        f"Categoria {category.name} atualizada com sucesso."
+    )
+    return RedirectResponse(url="/warehouse/categories", status_code=303)
+
+@app.get("/warehouse/categories/{category_id}", response_class=HTMLResponse)
+def category_products_page(
+    category_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    category = db.get(Category, category_id)
+
+    if category is None:
+        request.session["category_notice"] = "Categoria não encontrada."
+        request.session["category_notice_kind"] = "warning"
+        return RedirectResponse(url="/warehouse/categories", status_code=303)
+
+    products = db.scalars(
+        select(Product)
+        .where(Product.category_id == category_id)
+        .order_by(Product.name)
+    ).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="category_products.html",
+        context={"category": category, "products": products},
+    )
 
 @app.get("/warehouse/categories", response_class=HTMLResponse)
 def categories_page(
@@ -548,10 +695,7 @@ def render_new_product_form(
     values: dict | None = None,
     status_code: int = 200,
 ):
-
-    categories = db.scalars(
-        select(Category).order_by(Category.name)
-    ).all()
+    categories = db.scalars(select(Category).order_by(Category.name)).all()
 
     return templates.TemplateResponse(
         request=request,
@@ -563,6 +707,148 @@ def render_new_product_form(
         },
         status_code=status_code,
     )
+
+def render_edit_product_form(
+    request: Request,
+    db: Session,
+    product: Product,
+    error: str | None = None,
+    values: dict | None = None,
+    status_code: int = 200,
+):
+    categories = db.scalars(select(Category).order_by(Category.name)).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="product_edit_form.html",
+        context={
+            "product": product,
+            "categories": categories,
+            "error": error,
+            "values": values or {},
+        },
+        status_code=status_code,
+    )
+
+
+@app.get("/warehouse/products/{product_id}/edit", response_class=HTMLResponse)
+def edit_product_form(
+    product_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    product = db.get(Product, product_id)
+
+    if product is None:
+        request.session["notice"] = "Item não encontrado."
+        return RedirectResponse(url="/warehouse", status_code=303)
+
+    return render_edit_product_form(request, db, product)
+
+
+@app.post("/warehouse/products/{product_id}/edit", response_class=HTMLResponse)
+def submit_edit_product(
+    product_id: int,
+    request: Request,
+    name: str = Form(...),
+    category_id: int = Form(...),
+    minimum_quantity: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    product = db.get(Product, product_id)
+
+    if product is None:
+        request.session["notice"] = "Item não encontrado."
+        return RedirectResponse(url="/warehouse", status_code=303)
+
+    values = {
+        "name": name,
+        "category_id": category_id,
+        "minimum_quantity": minimum_quantity,
+    }
+    normalized_name = name.strip()
+
+    if len(normalized_name) < 2:
+        return render_edit_product_form(
+            request,
+            db,
+            product,
+            error="Informe um nome com pelo menos 2 caracteres.",
+            values=values,
+            status_code=422,
+        )
+
+    if minimum_quantity < 0:
+        return render_edit_product_form(
+            request,
+            db,
+            product,
+            error="O estoque mínimo não pode ser negativo.",
+            values=values,
+            status_code=422,
+        )
+
+    category = db.get(Category, category_id)
+
+    if category is None:
+        return render_edit_product_form(
+            request,
+            db,
+            product,
+            error="Selecione uma categoria válida.",
+            values=values,
+            status_code=404,
+        )
+
+    product.name = normalized_name
+    product.category_id = category_id
+    product.minimum_quantity = minimum_quantity
+    db.commit()
+
+    request.session["notice"] = f"Item {product.name} atualizado com sucesso."
+    return RedirectResponse(url="/warehouse", status_code=303)
+
+@app.post("/warehouse/products/{product_id}/delete")
+def submit_delete_product(
+    product_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("warehouse_access"):
+        return redirect_to_login()
+
+    product = db.get(Product, product_id)
+
+    if product is None:
+        request.session["notice"] = "Item não encontrado."
+        return RedirectResponse(url="/warehouse", status_code=303)
+
+    movement_count = db.scalar(
+        select(func.count(StockMovement.id)).where(
+            StockMovement.product_id == product_id
+        )
+    )
+
+    if movement_count > 0:
+        request.session["notice"] = (
+            f"Não é possível remover {product.name}: o item possui movimentações."
+        )
+        return RedirectResponse(url="/warehouse", status_code=303)
+
+    product_name = product.name
+    db.delete(product)
+    db.commit()
+
+    request.session["notice"] = f"Item {product_name} removido com sucesso."
+    return RedirectResponse(url="/warehouse", status_code=303)
+
+
 
 @app.get("/warehouse/products/new", response_class=HTMLResponse)
 def new_product_form(
@@ -579,8 +865,6 @@ def new_product_form(
 def submit_new_product(
     request: Request,
     name: str = Form(...),
-    sku: str = Form(...),
-    unit_price: Decimal = Form(...),
     initial_quantity: int = Form(0),
     minimum_quantity: int = Form(3),
     category_id: int = Form(...),
@@ -591,36 +875,27 @@ def submit_new_product(
 
     values = {
         "name": name,
-        "sku": sku,
-        "unit_price": str(unit_price),
         "initial_quantity": initial_quantity,
         "minimum_quantity": minimum_quantity,
         "category_id": category_id,
     }
 
     normalized_name = name.strip()
-    normalized_sku = sku.strip().upper()
 
     if len(normalized_name) < 2:
         return render_new_product_form(
-            request, db,
+            request,
+            db,
             error="Informe um nome com pelo menos 2 caracteres.",
             values=values,
             status_code=422,
         )
 
-    if len(normalized_sku) < 3:
+    if initial_quantity < 0 or minimum_quantity < 0:
         return render_new_product_form(
-            request, db,
-            error="Informe um SKU com pelo menos 3 caracteres.",
-            values=values,
-            status_code=422,
-        )
-
-    if unit_price <= 0 or initial_quantity < 0 or minimum_quantity < 0:
-        return render_new_product_form(
-            request, db,
-            error="Preço deve ser maior que zero; quantidades não podem ser negativas.",
+            request,
+            db,
+            error="As quantidades não podem ser negativas.",
             values=values,
             status_code=422,
         )
@@ -629,28 +904,15 @@ def submit_new_product(
 
     if category is None:
         return render_new_product_form(
-            request, db,
+            request,
+            db,
             error="Selecione uma categoria válida.",
             values=values,
             status_code=404,
         )
 
-    existing_sku = db.scalar(
-        select(Product).where(Product.sku == normalized_sku)
-    )
-
-    if existing_sku:
-        return render_new_product_form(
-            request, db,
-            error="Este SKU já está em uso por outro item.",
-            values=values,
-            status_code=409,
-        )
-
     product = Product(
         name=normalized_name,
-        sku=normalized_sku,
-        unit_price=unit_price,
         quantity=0,
         minimum_quantity=minimum_quantity,
         category_id=category_id,
@@ -672,6 +934,7 @@ def submit_new_product(
 
     request.session["notice"] = f"Item {product.name} cadastrado com sucesso."
     return RedirectResponse(url="/warehouse", status_code=303)
+
 
 @app.post("/warehouse/categories/{category_id}/delete")
 def delete_category(

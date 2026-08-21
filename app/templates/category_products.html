@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ category.name }} | Almoxarifado</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-lockup">
+        <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
+        <div>
+          <p class="eyebrow">Terreiro</p>
+          <strong>Almoxarifado</strong>
+        </div>
+      </div>
+      <a class="text-link" href="/warehouse/categories">Voltar às categorias</a>
+    </header>
+
+    <main class="page-shell warehouse-shell">
+      <section class="page-intro">
+        <p class="eyebrow">Categoria</p>
+        <h1>{{ category.name }}</h1>
+        <p>Confira os itens deste grupo. Use Editar para mudar o item de categoria sem alterar o saldo.</p>
+      </section>
+
+      {% if products %}
+        <section class="stock-section">
+          <div class="section-heading">
+            <h2>Itens vinculados</h2>
+            <span>{{ products|length }} item(ns)</span>
+          </div>
+
+          <div class="stock-list">
+            {% for product in products %}
+              <article class="stock-card">
+                <div>
+                  <h3>{{ product.name }}</h3>
+                  <p class="category-label">Alerta de reposição: {{ product.minimum_quantity }}</p>
+                </div>
+                <div class="quantity-box">
+                  <strong>{{ product.quantity }}</strong>
+                  <span>em estoque</span>
+                  <div class="product-actions">
+                    <a class="text-link" href="/warehouse/products/{{ product.id }}/edit">
+                      Editar item
+                    </a>
+                  </div>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% else %}
+        <div class="empty-state">
+          <h2>Nenhum item nesta categoria</h2>
+          <p>Esta categoria pode ser removida pela lista de categorias.</p>
+        </div>
+      {% endif %}
+    </main>
+  </body>
+</html>

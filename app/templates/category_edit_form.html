@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editar categoria | Almoxarifado</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-lockup">
+        <img
+          class="terreiro-logo"
+          src="{{ url_for('static', path='logo_tuepa.png') }}"
+          alt="Logo do terreiro"
+        />
+        <div>
+          <p class="eyebrow">Terreiro</p>
+          <strong>Almoxarifado</strong>
+        </div>
+      </div>
+      <a class="text-link" href="/warehouse/categories">Cancelar</a>
+    </header>
+
+    <main class="page-shell warehouse-shell">
+      <section class="page-intro">
+        <p class="eyebrow">Organização</p>
+        <h1>Editar categoria</h1>
+        <p>Altere apenas o nome do grupo. Os itens vinculados permanecerão nesta categoria.</p>
+      </section>
+
+      {% if error %}
+      <p class="form-error">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/warehouse/categories/{{ category.id }}/edit" class="form-card">
+        <label for="name">Nome da categoria</label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          value="{{ values.name if values else category.name }}"
+          minlength="2"
+          maxlength="100"
+          required
+          autofocus
+        />
+        <button type="submit">Salvar alteração</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,104 +1,112 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Estoque | Almoxarifado</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand-lockup">
-        <img
-          class="terreiro-logo"
-          src="{{ url_for('static', path='logo_tuepa.png') }}"
-          alt="Logo do terreiro"
-        >
-        <div>
-          <p class="eyebrow">TUEPA</p>
-          <strong>Estoque</strong>
-        </div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Estoque | Almoxarifado</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="brand-lockup">
+      <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
+      <div>
+        <p class="eyebrow">TUEPA</p>
+        <strong>Estoque</strong>
       </div>
-      <form method="post" action="/logout">
-          <button type="submit" class="text-button">Sair</button>
-      </form>
-    </header>
-4    <main class="page-shell warehouse-shell">
-      <section class="page-intro">
-        <p class="eyebrow">Visão geral</p>
-        <h1>Estoque atual</h1>
-        <p>Consulte os itens antes de registrar uma nova entrada ou saída.</p>
-      </section>
+    </div>
+    <form method="post" action="/logout">
+      <button type="submit" class="text-button">Sair</button>
+    </form>
+  </header>
+  <main class="page-shell warehouse-shell">
+    <section class="page-intro">
+      <p class="eyebrow">Visão geral</p>
+      <h1>Estoque atual</h1>
+      <p>Consulte os itens antes de registrar uma nova entrada ou saída.</p>
+    </section>
 
-      {%if notice %}
-        <p class="notice">{{ notice }}</p>
-      {% endif %}
+    {%if notice %}
+    <p class="notice">{{ notice }}</p>
+    {% endif %}
 
-      {% if low_stock_products %}
-        <section class="low-stock-card" aria-labelledby="low-stock-title">
+    {% if low_stock_products %}
+    <section class="low-stock-card" aria-labelledby="low-stock-title">
+      <div>
+        <p class="eyebrow">Reposição necessária</p>
+        <h2 id="low-stock-title">Itens no estoque mínimo</h2>
+        <p>Providencie a reposição antes que estes itens acabem.</p>
+      </div>
+
+      <ul class="low-stock-list">
+        {% for product in low_stock_products %}
+        <li>
+          <span>{{ product.name }}</span>
+          <strong>{{ product.quantity }} em estoque · mínimo {{ product.minimum_quantity }}</strong>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+    <section class="quick-actions" aria-label="Ações de estoque">
+      <a class="action-button" href="/warehouse/movement/in">Registrar entrada</a>
+      <a class="action-button danger-button" href="/warehouse/movement/out">Registrar saída</a>
+    </section>
+
+    <p class="management-link">
+      <a href="/warehouse/categories">Ver categorias</a>
+      <span>·</span>
+      <a href="/warehouse/categories/new">+ Nova categoria</a>
+      <span>·</span>
+      <a href="/warehouse/products/new">+ Novo item</a>
+    </p>
+
+    <section class="summary-card" aria-label="Resumo do estoque">
+      <span>Itens cadastrados</span>
+      <strong>{{ products|length }}</strong>
+    </section>
+
+    <section class="stock-section">
+      <div class="section-heading">
+        <h2>Itens em estoque</h2>
+        <span>{{ products|length }} item(ns)</span>
+      </div>
+
+      {% if products %}
+      <div class="stock-list">
+        {% for product in products %}
+        <article class="stock-card">
           <div>
-            <p class="eyebrow">Reposição necessária</p>
-            <h2 id="low-stock-title">Itens no estoque mínimo</h2>
-            <p>Providencie a reposição antes que estes itens acabem.</p>
+            <p class="category-label">{{ product.category.name }}</p>
+            <h3>{{ product.name }}</h3>
           </div>
+          <div class="quantity-box">
+            <strong>{{ product.quantity }}</strong>
+            <span>em estoque</span>
+            <div class="product-actions">
+              <a class="text-link" href="/warehouse/products/{{ product.id }}/edit">
+                Editar
+              </a>
 
-          <ul class="low-stock-list">
-            {% for product in low_stock_products %}
-              <li>
-                <span>{{ product.name }}</span>
-                <strong>{{ product.quantity }} em estoque · mínimo {{ product.minimum_quantity }}</strong>
-              </li>
-            {% endfor %}
-          </ul>
-        </section>
+              <form method="post" action="/warehouse/products/{{ product.id }}/delete"
+                onsubmit="return confirm('Remover o item {{ product.name }}? Itens com movimentações não serão removidos.');">
+                <button type="submit" class="delete-item-button">Remover</button>
+              </form>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <h2>Nenhum item cadastrado</h2>
+        <p>Use o botão “+ Novo item” para cadastrar o primeiro item do almoxarifado.</p>
+      </div>
       {% endif %}
-      <section class="quick-actions" aria-label="Ações de estoque">
-        <a class="action-button" href="/warehouse/movement/in">Registrar entrada</a>
-        <a class="action-button danger-button" href="/warehouse/movement/out">Registrar saída</a>
-      </section>
+    </section>
+  </main>
+</body>
 
-      <p class="management-link">
-        <a href="/warehouse/categories">Ver categorias</a>
-        <span>·</span>
-        <a href="/warehouse/categories/new">+ Nova categoria</a>
-        <span>·</span>
-        <a href="/warehouse/products/new">+ Novo item</a>
-      </p>
-      
-      <section class="summary-card" aria-label="Resumo do estoque">
-        <span>Itens cadastrados</span>
-        <strong>{{ products|length }}</strong>
-      </section>
-
-      <section class="stock-section">
-        <div class="section-heading">
-          <h2>Itens em estoque</h2>
-          <span>{{ products|length }} item(ns)</span>
-        </div>
-
-        {% if products %}
-          <div class="stock-list">
-            {% for product in products %}
-              <article class="stock-card">
-                <div>
-                  <p class="category-label">{{ product.category.name }}</p>
-                  <h3>{{ product.name }}</h3>
-                  <p class="sku-label">SKU: {{ product.sku }}</p>
-                </div>
-                <div class="quantity-box">
-                  <strong>{{ product.quantity }}</strong>
-                  <span>em estoque</span>
-                </div>
-              </article>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="empty-state">
-            <h2>Nenhum item cadastrado</h2>
-            <p>Cadastre produtos pela documentação da API enquanto a tela de cadastro não é adicionada.</p>
-          </div>
-        {% endif %}
-      </section>
-    </main>
-  </body>
 </html>
