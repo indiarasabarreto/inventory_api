@@ -19,26 +19,55 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("products", recreate="always") as batch_op:
-        batch_op.add_column(
-            sa.Column("import_batch_id", sa.Integer(), nullable=True)
-        )
-        batch_op.create_foreign_key(
-            "fk_products_import_batch_id_import_batches",
-            "import_batches",
-            ["import_batch_id"],
-            ["id"],
-        )
+    op.create_table(
+        "import_batches",
+        sa.Column(
+            "id",
+            sa.Integer(),
+            autoincrement=True,
+            nullable=False,
+        ),
+        sa.Column(
+            "category_id",
+            sa.Integer(),
+            nullable=False,
+        ),
+        sa.Column(
+            "filename",
+            sa.String(length=255),
+            nullable=False,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["category_id"],
+            ["categories.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
 
+    op.add_column(
+        "products",
+        sa.Column("import_batch_id", sa.Integer(), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_products_import_batch_id_import_batches",
+        "products",
+        "import_batches",
+        ["import_batch_id"],
+        ["id"],
+    )
 
 def downgrade() -> None:
-    with op.batch_alter_table("products", recreate="always") as batch_op:
-        batch_op.drop_constraint(
-            "fk_products_import_batch_id_import_batches",
-            type_="foreignkey",
-        )
-        batch_op.drop_column("import_batch_id")
-
+    op.drop_constraint(
+        "fk_products_import_batch_id_import_batches",
+        "products",
+        type_="foreignkey",
+    )
+    op.drop_column("products", "import_batch_id")
     op.drop_table("import_batches")
 
 
