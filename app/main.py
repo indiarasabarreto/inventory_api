@@ -2,6 +2,7 @@ import os
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import unicodedata
 from fastapi import Depends, File, FastAPI, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -831,25 +832,97 @@ def submit_category_import(
         if not rows:
             raise ValueError("A planilha está vazia.")
 
-        headers = [
-            str(value or "").strip().lower()
-            for value in rows[0]
-        ]
-
-        required_headers = {"nome", "quantidade"}
-        if not required_headers.issubset(headers):
-            raise ValueError(
-                "A primeira linha deve conter as colunas "
-                "nome e quantidade."
+        def normalize_header(value):
+            text = str(value or "").strip().casefold()
+            text = unicodedata.normalize("NFKD", text)
+            text = "".join(
+                character
+                for character in text
+                if not unicodedata.combining(character)
+            )
+            return "".join(
+                character
+                for character in text
+                if character.isalnum()
             )
 
-        name_index = headers.index("nome")
-        quantity_index = headers.index("quantidade")
-        minimum_index = (
-            headers.index("estoque_minimo")
-            if "estoque_minimo" in headers
-            else None
+        headers = [normalize_header(value) for value in rows[0]]
+
+        name_aliases = {
+            "nome",
+            "name",
+            "produto",
+            "item",
+            "material",
+            "descricao",
+            "description",
+            "artigo",
+            "mercadoria",
+        }
+        quantity_aliases = {
+            "quantidade",
+            "qtd",
+            "qty",
+            "estoque",
+            "saldo",
+            "quantidadeatual",
+            "estoqueatual",
+            "saldoatual",
+        }
+        minimum_aliases = {
+            "estoqueminimo",
+            "quantidademinima",
+            "minimo",
+            "min",
+            "reposicao",
+            "alertareposicao",
+        }
+
+        def find_exact_index(aliases, excluded=None):
+            excluded = excluded or set()
+            for index, header in enumerate(headers):
+                if index not in excluded and header in aliases:
+                    return index
+            return None
+
+        name_index = find_exact_index(name_aliases)
+        minimum_index = find_exact_index(minimum_aliases)
+        quantity_index = find_exact_index(
+            quantity_aliases,
+            excluded={minimum_index} if minimum_index is not None else set(),
         )
+
+        if name_index is None:
+            for index, header in enumerate(headers):
+                if index != minimum_index and header:
+                    name_index = index
+                    break
+
+        if name_index is None:
+            raise ValueError(
+                "Não foi possível identificar a coluna do nome do item."
+            )
+
+        if quantity_index is None:
+            for index, header in enumerate(headers):
+                if index in {name_index, minimum_index} or not header:
+                    continue
+
+                values_to_test = [
+                    row[index]
+                    for row in rows[1:]
+                    if index < len(row)
+                    and row[index] is not None
+                    and str(row[index]).strip()
+                ]
+
+                if any(
+                    isinstance(value, (int, float))
+                    or str(value).strip().replace(",", ".").replace(".", "", 1).isdigit()
+                    for value in values_to_test
+                ):
+                    quantity_index = index
+                    break
 
         products_to_add = []
         seen_names = set()
@@ -888,13 +961,44 @@ def submit_category_import(
                 )
 
             try:
-                quantity = int(row[quantity_index])
-                minimum_quantity = (
-                    int(row[minimum_index])
+                raw_quantity = (
+                    row[quantity_index]
+                    if quantity_index is not None
+                    and quantity_index < len(row)
+                    else None
+                )
+                quantity = (
+                    int(
+                        float(
+                            str(raw_quantity)
+                            .strip()
+                            .replace(",", ".")
+                        )
+                    )
+                    if raw_quantity is not None
+                    and str(raw_quantity).strip()
+                    else 0
+                )
+
+                raw_minimum = (
+                    row[minimum_index]
                     if minimum_index is not None
-                    and row[minimum_index] is not None
+                    and minimum_index < len(row)
+                    else None
+                )
+                minimum_quantity = (
+                    int(
+                        float(
+                            str(raw_minimum)
+                            .strip()
+                            .replace(",", ".")
+                        )
+                    )
+                    if raw_minimum is not None
+                    and str(raw_minimum).strip()
                     else 3
                 )
+
             except (TypeError, ValueError):
                 raise ValueError(
                     f"Linha {line_number}: quantidade e "
