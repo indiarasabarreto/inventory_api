@@ -4,7 +4,9 @@
   background: #f5f3ed;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -919,28 +921,6 @@ select:focus {
   margin: 0;
 }
 
-@media (max-width: 640px) {
-  .category-list {
-    grid-template-columns: 1fr;
-  }
-
-  .category-card .category-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .category-card .category-actions > a,
-  .category-card .category-actions > form,
-  .category-card .category-actions > form button {
-    width: 100%;
-  }
-
-  .category-card .category-actions > a {
-    box-sizing: border-box;
-    text-align: center;
-  }
-}
-
 .category-page-actions {
   align-items: center;
 }
@@ -1262,16 +1242,135 @@ form .delete-category-button:focus-visible {
   margin: 0;
 }
 
+
+
+/* Ajustes dos cards em telas pequenas */
 @media (max-width: 640px) {
-  .product-actions-expanded {
-    align-items: stretch;
-    flex-direction: column;
+  .warehouse-shell {
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 
-  .product-action-button,
-  .product-actions-expanded form,
-  .product-actions-expanded form button {
+  .category-list,
+  .category-preview-grid {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .category-card,
+  .category-preview-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .category-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .category-card-actions > a,
+  .category-card-actions > form,
+  .category-card-actions > form button {
     box-sizing: border-box;
+    display: block;
+    margin: 0;
+    text-align: center;
+    width: 100%;
+  }
+
+  .subcategory-card-link,
+  .category-card-main {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .category-card-header h2,
+  .category-card-header p,
+  .category-card-main h2,
+  .category-card-main small {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  .warehouse-shell {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
+
+
+/* Correção da página de categoria no celular */
+@media (max-width: 640px) {
+  /* Os botões da categoria ficam um abaixo do outro */
+  .category-page-actions,
+  .page-actions {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .category-page-actions > a,
+  .category-page-actions > form,
+  .category-page-actions > form button,
+  .page-actions > a,
+  .page-actions > form,
+  .page-actions > form button {
+    box-sizing: border-box;
+    display: block;
+    margin: 0;
+    text-align: center;
+    width: 100%;
+  }
+
+  /* Cada card de item ocupa uma área própria */
+  .stock-list {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .stock-card {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .stock-card > div,
+  .quantity-box {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .quantity-box {
+    text-align: left;
+  }
+
+  /* Ações do item: editar, entrada, saída e remover */
+  .product-actions-expanded {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    width: 100%;
+  }
+
+  .product-actions-expanded > a,
+  .product-actions-expanded > form,
+  .product-actions-expanded > form button {
+    box-sizing: border-box;
+    display: block;
+    margin: 0;
+    text-align: center;
     width: 100%;
   }
 }
