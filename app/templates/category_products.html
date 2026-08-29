@@ -1,63 +1,171 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ category.name }} | Almoxarifado</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand-lockup">
-        <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
-        <div>
-          <p class="eyebrow">Terreiro</p>
-          <strong>Almoxarifado</strong>
-        </div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ category.name }} | Almoxarifado</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="brand-lockup">
+      <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
+      <div>
+        <p class="eyebrow">Terreiro</p>
+        <strong>Almoxarifado</strong>
       </div>
-      <a class="text-link" href="/warehouse/categories">Voltar às categorias</a>
-    </header>
+    </div>
+    <a class="text-link" href="/warehouse/categories">Voltar às categorias</a>
+  </header>
 
-    <main class="page-shell warehouse-shell">
-      <section class="page-intro">
-        <p class="eyebrow">Categoria</p>
-        <h1>{{ category.name }}</h1>
-        <p>Confira os itens deste grupo. Use Editar para mudar o item de categoria sem alterar o saldo.</p>
-      </section>
+  <main class="page-shell warehouse-shell">
+    <section class="page-intro">
+      <p class="eyebrow">{{ "Subcategoria" if category.parent_id else "Categoria" }}</p>
+      <h1>{{ category.name }}</h1>
 
-      {% if products %}
-        <section class="stock-section">
-          <div class="section-heading">
-            <h2>Itens vinculados</h2>
-            <span>{{ products|length }} item(ns)</span>
-          </div>
-
-          <div class="stock-list">
-            {% for product in products %}
-              <article class="stock-card">
-                <div>
-                  <h3>{{ product.name }}</h3>
-                  <p class="category-label">Alerta de reposição: {{ product.minimum_quantity }}</p>
-                </div>
-                <div class="quantity-box">
-                  <strong>{{ product.quantity }}</strong>
-                  <span>em estoque</span>
-                  <div class="product-actions">
-                    <a class="text-link" href="/warehouse/products/{{ product.id }}/edit">
-                      Editar item
-                    </a>
-                  </div>
-                </div>
-              </article>
-            {% endfor %}
-          </div>
-        </section>
+      {% if category.parent_id %}
+      <p>
+        Subcategoria da categoria principal.
+        <a class="text-link" href="/warehouse/categories/{{ category.parent_id }}">
+          Voltar à categoria principal
+        </a>
+      </p>
       {% else %}
-        <div class="empty-state">
-          <h2>Nenhum item nesta categoria</h2>
-          <p>Esta categoria pode ser removida pela lista de categorias.</p>
-        </div>
+      <p>Confira os itens deste grupo e gerencie suas subcategorias.</p>
       {% endif %}
-    </main>
-  </body>
+    </section>
+
+    <!-- Este bloco fica fora do if products para aparecer mesmo quando não há itens. -->
+    <div class="page-actions category-page-actions">
+      <a class="action-button compact-action" href="/warehouse/products/new?category_id={{ category.id }}">
+        + Novo item aqui
+      </a>
+
+      <a class="action-button compact-action secondary-action" href="/warehouse/categories/{{ category.id }}/import">
+        Importar Excel
+      </a>
+
+      {% if category.parent_id %}
+      <a class="action-button compact-action outline-action" href="/warehouse/categories/{{ category.id }}/edit">
+        Editar subcategoria
+      </a>
+      {% else %}
+      <a class="action-button compact-action subcategory-action"
+        href="/warehouse/categories/new?parent_id={{ category.id }}">
+        + Nova subcategoria
+      </a>
+
+      <a class="action-button compact-action outline-action" href="/warehouse/categories/{{ category.id }}/edit">
+        Editar categoria
+      </a>
+      {% endif %}
+
+      <form method="post" action="/warehouse/categories/{{ category.id }}/delete"
+        onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará esta categoria, seus itens e seu histórico. Esta ação não pode ser desfeita. Deseja continuar?');">
+        <button type="submit" class="delete-category-button">
+          Remover {{ "subcategoria" if category.parent_id else "categoria" }}
+        </button>
+      </form>
+    </div>
+
+    {% if import_batches %}
+    <section class="import-history-section" aria-labelledby="import-history-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Controle</p>
+          <h2 id="import-history-title">Importações desta área</h2>
+        </div>
+        <span>{{ import_batches|length }} lote(s)</span>
+      </div>
+
+      <div class="import-history-list">
+        {% for batch in import_batches %}
+        <article class="import-history-card">
+          <div>
+            <strong>{{ batch.filename }}</strong>
+            <small>
+              Importado em {{ batch.created_at.strftime('%d/%m/%Y às %H:%M') }}
+            </small>
+          </div>
+
+          <form method="post" action="/warehouse/import-batches/{{ batch.id }}/undo"
+            onsubmit="return confirm('ATENÇÃO: desfazer esta importação removerá todos os itens criados por {{ batch.filename }} e suas movimentações. Esta ação não pode ser desfeita. Deseja continuar?');">
+            <button type="submit" class="delete-item-button">
+              Desfazer importação
+            </button>
+          </form>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if products %}
+    <section class="stock-section">
+      <div class="section-heading">
+        <h2>Itens vinculados</h2>
+        <span>{{ products|length }} item(ns)</span>
+      </div>
+
+      <div class="stock-list">
+        {% for product in products %}
+        <article class="stock-card">
+          <div>
+            <h3>{{ product.name }}</h3>
+            <p class="category-label">
+              Alerta de reposição: {{ product.minimum_quantity }}
+            </p>
+          </div>
+
+          <div class="quantity-box">
+            <strong>{{ product.quantity }}</strong>
+            <span>em estoque</span>
+
+            <div class="product-actions product-actions-expanded">
+              <a class="product-action-button edit-product-action" href="/warehouse/products/{{ product.id }}/edit">
+                Editar item e quantidade
+              </a>
+
+              <a class="product-action-button entry-product-action" href="/warehouse/movement/in">
+                Registrar entrada
+              </a>
+
+              <a class="product-action-button exit-product-action" href="/warehouse/movement/out">
+                Registrar saída
+              </a>
+
+              <form method="post" action="/warehouse/products/{{ product.id }}/delete"
+                onsubmit="return confirm('ATENÇÃO: remover {{ product.name }} apagará também todo o histórico de entradas e saídas. Esta ação não pode ser desfeita. Deseja continuar?');">
+                <button type="submit" class="delete-item-button">
+                  Remover item
+                </button>
+              </form>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <div class="empty-state empty-category-state">
+      <span class="empty-state-icon">▦</span>
+      <h2>Nenhum item nesta {{ "subcategoria" if category.parent_id else "categoria" }}</h2>
+      <p>Esta área está pronta para receber itens.</p>
+
+      <div class="empty-state-actions">
+        <a class="action-button compact-action" href="/warehouse/products/new?category_id={{ category.id }}">
+          + Novo item aqui
+        </a>
+
+        <a class="action-button compact-action secondary-action" href="/warehouse/categories/{{ category.id }}/import">
+          Importar Excel
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </main>
+</body>
+
 </html>

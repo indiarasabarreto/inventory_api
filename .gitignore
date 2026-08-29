@@ -9,3 +9,4 @@ inventory.db
 backups/
 .DS_Store
 *.db.backup.*
+*.backup

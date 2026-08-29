@@ -220,8 +220,7 @@ def test_delete_product_without_movements(client: TestClient):
     assert response.status_code == 204
     assert client.get("/products").json() == []
 
-
-def test_delete_product_with_movements_is_blocked(client: TestClient):
+def test_delete_product_with_movements_also_deletes_history(client: TestClient):
     category_id = create_category(client)
     product_id = create_product(client, category_id, quantity=0)
 
@@ -237,12 +236,11 @@ def test_delete_product_with_movements_is_blocked(client: TestClient):
 
     response = client.delete(f"/products/{product_id}")
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == (
-        "Não é possível remover um item que possui movimentações."
-    )
-    assert len(client.get("/products").json()) == 1
+    assert response.status_code == 204
+    assert client.get("/products").json() == []
 
+    history_response = client.get(f"/products/{product_id}/movements")
+    assert history_response.status_code == 404
 
 def test_list_products_by_category(client: TestClient):
     first_category_id = create_category(client)

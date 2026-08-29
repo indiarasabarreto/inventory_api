@@ -1,83 +1,76 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Editar item | Almoxarifado</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand-lockup">
-        <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
-        <div>
-          <p class="eyebrow">Terreiro</p>
-          <strong>Almoxarifado</strong>
-        </div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editar item | Almoxarifado</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="brand-lockup">
+      <img class="terreiro-logo" src="{{ url_for('static', path='logo_tuepa.png') }}" alt="Logo do terreiro">
+      <div>
+        <p class="eyebrow">Terreiro</p>
+        <strong>Almoxarifado</strong>
       </div>
-      <a class="text-link" href="/warehouse">Cancelar</a>
-    </header>
+    </div>
+    <a class="text-link" href="/warehouse">Cancelar</a>
+  </header>
 
-    <main class="page-shell warehouse-shell">
-      <section class="form-card">
-        <p class="eyebrow">Organização</p>
-        <h1>Editar item</h1>
-        <p>
-          Atualize o nome, a categoria ou o alerta de reposição. A quantidade atual
-          só pode ser modificada pelas ações de entrada e saída.
-        </p>
-        <p><strong>Quantidade atual: {{ product.quantity }}</strong></p>
+  <main class="page-shell warehouse-shell">
+    <section class="form-card">
+      <p class="eyebrow">Organização</p>
+      <h1>Editar item</h1>
+      <p>
+        Atualize o nome, a categoria ou o alerta de reposição. A quantidade atual
+        só pode ser modificada pelas ações de entrada e saída.
+      </p>
+      <p><strong>Quantidade atual: {{ product.quantity }}</strong></p>
 
-        {% if error %}
-          <p class="form-error">{{ error }}</p>
-        {% endif %}
+      {% if error %}
+      <p class="form-error">{{ error }}</p>
+      {% endif %}
 
-        <form method="post" action="/warehouse/products/{{ product.id }}/edit">
-          <div class="form-grid">
-            <div>
-              <label for="name">Nome do item</label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                value="{{ values.get('name', product.name) }}"
-                minlength="2"
-                maxlength="160"
-                required
-              >
-            </div>
-
-            <div>
-              <label for="category_id">Categoria</label>
-              <select id="category_id" name="category_id" required>
-                {% for category in categories %}
-                  <option
-                    value="{{ category.id }}"
-                    {% if values.get('category_id', product.category_id) == category.id %}selected{% endif %}
-                  >
-                    {{ category.name }}
-                  </option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div>
-              <label for="minimum_quantity">Alerta de reposição a partir de</label>
-              <input
-                id="minimum_quantity"
-                name="minimum_quantity"
-                type="number"
-                min="0"
-                step="1"
-                value="{{ values.get('minimum_quantity', product.minimum_quantity) }}"
-                required
-              >
-            </div>
+      <form method="post" action="/warehouse/products/{{ product.id }}/edit">
+        <div class="form-grid">
+          <div>
+            <label for="name">Nome do item</label>
+            <input id="name" name="name" type="text" value="{{ values.get('name', product.name) }}" minlength="2"
+              maxlength="160" required>
           </div>
 
-          <button type="submit">Salvar alteração</button>
-        </form>
-      </section>
-    </main>
-  </body>
+          <div>
+            <label for="category_id">Categoria</label>
+            <select id="category_id" name="category_id" required>
+              {% for category in categories %}
+              <option value="{{ category.id }}" {% if values.get('category_id', product.category_id)==category.id
+                %}selected{% endif %}>
+                {{ category.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label for="quantity">Quantidade atual</label>
+            <input id="quantity" name="quantity" type="number" min="0" step="1"
+              value="{{ values.get('quantity', product.quantity) }}" required>
+            <p class="form-help">
+              Para entradas e saídas normais, prefira os botões de movimentação. Use este campo para corrigir o saldo.
+            </p>
+            <label for="minimum_quantity">Alerta de reposição a partir de</label>
+            <input id="minimum_quantity" name="minimum_quantity" type="number" min="0" step="1"
+              value="{{ values.get('minimum_quantity', product.minimum_quantity) }}" required>
+          </div>
+        </div>
+
+        <button type="submit">Salvar alteração</button>
+      </form>
+    </section>
+  </main>
+</body>
+
 </html>

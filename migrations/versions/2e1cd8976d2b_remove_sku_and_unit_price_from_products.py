@@ -19,8 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_column("products", "sku")
-    op.drop_column("products", "unit_price")
+    with op.batch_alter_table("products", recreate="always") as batch_op:
+        batch_op.drop_column("sku")
+        batch_op.drop_column("unit_price")
+
 
 
 def downgrade() -> None:
