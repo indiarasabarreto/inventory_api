@@ -2,7 +2,6 @@ import os
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-import unicodedata
 from fastapi import Depends, File, FastAPI, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +40,8 @@ async def lifespan(app: FastAPI):
 
 
 APP_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = APP_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Inventory API",
@@ -785,311 +786,38 @@ def category_import_page(
         },
     )
 
-
-@app.post("/warehouse/categories/{category_id}/import", response_class=HTMLResponse )
-def submit_category_import(
-    category_id: int,
+@app.post("/warehouse/import-batches/{batch_id}/undo")
+def undo_import_batch(
+    batch_id: int,
     request: Request,
-    file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     if not request.session.get("warehouse_access"):
         return redirect_to_login()
 
-    category = db.get(Category, category_id)
+    import_batch = db.get(ImportBatch, batch_id)
 
-    if category is None:
-        request.session["category_notice"] = "Categoria não encontrada."
+    if import_batch is None:
+        request.session["category_notice"] = "Importação não encontrada."
         request.session["category_notice_kind"] = "warning"
         return RedirectResponse(
             url="/warehouse/categories",
             status_code=303,
         )
 
-    filename = (file.filename or "").lower()
+    category_id = import_batch.category_id
+    filename = import_batch.filename
 
-    if not filename.endswith((".xlsx", ".xlsm")):
-        return templates.TemplateResponse(
-            request=request,
-            name="category_import.html",
-            context={
-                "category": category,
-                "error": "Envie um arquivo Excel .xlsx ou .xlsm.",
-                "imported_count": None,
-            },
-            status_code=422,
-        )
+    suffix = Path(filename).suffix.lower()
+    file_path = UPLOAD_DIR / f"{import_batch.id}{suffix}"
+    if file_path.exists():
+        file_path.unlink()
 
-    try:
-        workbook = load_workbook(
-            file.file,
-            read_only=True,
-            data_only=True,
-        )
-        sheet = workbook.active
-        rows = list(sheet.iter_rows(values_only=True))
-
-        if not rows:
-            raise ValueError("A planilha está vazia.")
-
-        def normalize_header(value):
-            text = str(value or "").strip().casefold()
-            text = unicodedata.normalize("NFKD", text)
-            text = "".join(
-                character
-                for character in text
-                if not unicodedata.combining(character)
-            )
-            return "".join(
-                character
-                for character in text
-                if character.isalnum()
-            )
-
-        headers = [normalize_header(value) for value in rows[0]]
-
-        name_aliases = {
-            "nome",
-            "name",
-            "produto",
-            "item",
-            "material",
-            "descricao",
-            "description",
-            "artigo",
-            "mercadoria",
-        }
-        quantity_aliases = {
-            "quantidade",
-            "qtd",
-            "qty",
-            "estoque",
-            "saldo",
-            "quantidadeatual",
-            "estoqueatual",
-            "saldoatual",
-        }
-        minimum_aliases = {
-            "estoqueminimo",
-            "quantidademinima",
-            "minimo",
-            "min",
-            "reposicao",
-            "alertareposicao",
-        }
-
-        def find_exact_index(aliases, excluded=None):
-            excluded = excluded or set()
-            for index, header in enumerate(headers):
-                if index not in excluded and header in aliases:
-                    return index
-            return None
-
-        name_index = find_exact_index(name_aliases)
-        minimum_index = find_exact_index(minimum_aliases)
-        quantity_index = find_exact_index(
-            quantity_aliases,
-            excluded={minimum_index} if minimum_index is not None else set(),
-        )
-
-        if name_index is None:
-            for index, header in enumerate(headers):
-                if index != minimum_index and header:
-                    name_index = index
-                    break
-
-        if name_index is None:
-            raise ValueError(
-                "Não foi possível identificar a coluna do nome do item."
-            )
-
-        if quantity_index is None:
-            for index, header in enumerate(headers):
-                if index in {name_index, minimum_index} or not header:
-                    continue
-
-                values_to_test = [
-                    row[index]
-                    for row in rows[1:]
-                    if index < len(row)
-                    and row[index] is not None
-                    and str(row[index]).strip()
-                ]
-
-                if any(
-                    isinstance(value, (int, float))
-                    or str(value).strip().replace(",", ".").replace(".", "", 1).isdigit()
-                    for value in values_to_test
-                ):
-                    quantity_index = index
-                    break
-
-        products_to_add = []
-        seen_names = set()
-
-        for line_number, row in enumerate(rows[1:], start=2):
-            if not any(
-                value is not None and str(value).strip()
-                for value in row
-            ):
-                continue
-
-            name = str(row[name_index] or "").strip()
-            if not name:
-                raise ValueError(
-                    f"Linha {line_number}: informe o nome do item."
-                )
-
-            normalized_name = name.casefold()
-            if normalized_name in seen_names:
-                raise ValueError(
-                    f"Linha {line_number}: o item '{name}' "
-                    "aparece mais de uma vez na planilha."
-                )
-
-            already_exists = db.scalar(
-                select(Product).where(
-                    Product.category_id == category_id,
-                    func.lower(Product.name) == normalized_name,
-                )
-            )
-
-            if already_exists:
-                raise ValueError(
-                    f"Linha {line_number}: o item '{name}' "
-                    "já existe nesta categoria."
-                )
-
-            try:
-                raw_quantity = (
-                    row[quantity_index]
-                    if quantity_index is not None
-                    and quantity_index < len(row)
-                    else None
-                )
-                quantity = (
-                    int(
-                        float(
-                            str(raw_quantity)
-                            .strip()
-                            .replace(",", ".")
-                        )
-                    )
-                    if raw_quantity is not None
-                    and str(raw_quantity).strip()
-                    else 0
-                )
-
-                raw_minimum = (
-                    row[minimum_index]
-                    if minimum_index is not None
-                    and minimum_index < len(row)
-                    else None
-                )
-                minimum_quantity = (
-                    int(
-                        float(
-                            str(raw_minimum)
-                            .strip()
-                            .replace(",", ".")
-                        )
-                    )
-                    if raw_minimum is not None
-                    and str(raw_minimum).strip()
-                    else 3
-                )
-
-            except (TypeError, ValueError):
-                raise ValueError(
-                    f"Linha {line_number}: quantidade e "
-                    "estoque_minimo devem ser números inteiros."
-                )
-
-            if quantity < 0:
-                raise ValueError(
-                    f"Linha {line_number}: quantidade não pode ser negativa."
-                )
-
-            if minimum_quantity < 0:
-                raise ValueError(
-                    f"Linha {line_number}: estoque_minimo não pode "
-                    "ser negativo."
-                )
-
-            seen_names.add(normalized_name)
-            products_to_add.append(
-                {
-                    "name": name,
-                    "quantity": quantity,
-                    "minimum_quantity": minimum_quantity,
-                }
-            )
-
-        if not products_to_add:
-            raise ValueError(
-                "A planilha não contém linhas válidas para importar."
-            )
-
-        import_batch = ImportBatch(
-            category_id=category_id,
-            filename=file.filename or "importacao.xlsx",
-        )
-        db.add(import_batch)
-        db.flush()
-
-        for data in products_to_add:
-            product = Product(
-                name=data["name"],
-                quantity=data["quantity"],
-                minimum_quantity=data["minimum_quantity"],
-                category_id=category_id,
-                import_batch_id=import_batch.id,
-            )
-            db.add(product)
-            db.flush()
-
-            if data["quantity"] > 0:
-                db.add(
-                    StockMovement(
-                        product_id=product.id,
-                        movement_type="in",
-                        quantity=data["quantity"],
-                    )
-                )
-
-        db.commit()
-        imported_count = len(products_to_add)
-
-
-    except ValueError as exc:
-        db.rollback()
-        return templates.TemplateResponse(
-            request=request,
-            name="category_import.html",
-            context={
-                "category": category,
-                "error": str(exc),
-                "imported_count": None,
-            },
-            status_code=422,
-        )
-
-    except Exception:
-        db.rollback()
-        return templates.TemplateResponse(
-            request=request,
-            name="category_import.html",
-            context={
-                "category": category,
-                "error": "Não foi possível ler a planilha. "
-                "Confirme se o arquivo está íntegro e no formato Excel.",
-                "imported_count": None,
-            },
-            status_code=422,
-        )
+    db.delete(import_batch)
+    db.commit()
 
     request.session["category_notice"] = (
-        f"{imported_count} item(ns) importado(s) em {category.name}."
+        f"A importação {filename} foi desfeita com sucesso."
     )
     request.session["category_notice_kind"] = "success"
     return RedirectResponse(
