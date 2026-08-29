@@ -1374,3 +1374,73 @@ form .delete-category-button:focus-visible {
     width: 100%;
   }
 }
+
+
+/* Correção definitiva da página de categoria no iPhone */
+@media screen and (max-width: 640px) {
+  .category-page-actions,
+  .page-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .category-page-actions > *,
+  .page-actions > * {
+    display: block !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .category-page-actions > form button,
+  .page-actions > form button {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .stock-list {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 1rem !important;
+    width: 100% !important;
+  }
+
+  .stock-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 1rem !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    width: 100% !important;
+  }
+
+  .stock-card > div,
+  .stock-card .quantity-box {
+    display: block !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .product-actions-expanded {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.65rem !important;
+    width: 100% !important;
+  }
+
+  .product-actions-expanded > a,
+  .product-actions-expanded > form,
+  .product-actions-expanded > form button {
+    display: block !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    text-align: center !important;
+    width: 100% !important;
+  }
+
+  .product-actions-expanded > form {
+    padding: 0 !important;
+  }
+}
