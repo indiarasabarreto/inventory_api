@@ -33,18 +33,44 @@
     </p>
     {% endif %}
 
-    <p class="management-link management-link-left">
-      <a href="/warehouse/categories/new">+ Nova categoria</a>
-    </p>
+    <div class="page-actions">
+      <a class="action-button compact-action" href="/warehouse/products/new">
+        + Novo item
+      </a>
+      <a class="action-button compact-action" href="/warehouse/categories/new">
+        + Nova categoria
+      </a>
+    </div>
+
 
     {% if categories %}
     <section class="category-list" aria-label="Categorias cadastradas">
       {% for category in categories %}
       <article class="category-card">
-        <div>
+        <div class="category-card-header">
           <h2>{{ category.name }}</h2>
           <p>ID da categoria: {{ category.id }}</p>
         </div>
+
+        {% if category.subcategories %}
+        <div class="subcategory-list">
+          <p class="subcategory-heading">Subcategorias</p>
+
+          {% for subcategory in category.subcategories %}
+          <a class="subcategory-card-link" href="/warehouse/categories/{{ subcategory.id }}"
+            aria-label="Abrir subcategoria {{ subcategory.name }}">
+            <span>
+              <strong>{{ subcategory.name }}</strong>
+              <small>Ver itens desta subcategoria</small>
+            </span>
+            <span class="subcategory-arrow">›</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="no-subcategories">Nenhuma subcategoria criada.</p>
+        {% endif %}
+
         <div class="category-actions">
           <div class="category-count">
             <strong>{{ category.product_count }}</strong>
@@ -55,23 +81,28 @@
             Editar
           </a>
 
-          {% if category.product_count == 0 %}
+          <a class="subcategory-button" href="/warehouse/categories/new?parent_id={{ category.id }}">
+            <span class="button-icon">+</span>
+            <span>
+              <strong>Nova subcategoria</strong>
+              <small>Adicionar divisão nesta categoria</small>
+            </span>
+          </a>
+
+
+          <a class="text-link" href="/warehouse/categories/{{ category.id }}">
+            Ver itens
+          </a>
+
           <form method="post" action="/warehouse/categories/{{ category.id }}/delete"
-            onsubmit="return confirm('Remover a categoria {{ category.name }}?');">
+            onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará também todas as subcategorias, itens e movimentações vinculadas. Esta ação não pode ser desfeita. Deseja continuar?');">
             <button type="submit" class="delete-category-button">
               Remover
             </button>
           </form>
-          {% else %}
-          <a class="text-link" href="/warehouse/categories/{{ category.id }}">
-            Ver itens
-          </a>
-          <span class="category-locked">Contém itens</span>
-          {% endif %}
         </div>
-      </article>
 
-      {% endfor %}
+        {% endfor %}
     </section>
     {% else %}
     <div class="empty-state">
