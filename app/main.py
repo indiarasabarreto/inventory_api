@@ -9,8 +9,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.security import SESSION_SECRET, is_valid_password
+from app import storage
 
-from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -40,8 +40,6 @@ async def lifespan(app: FastAPI):
 
 
 APP_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = APP_DIR / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Inventory API",
@@ -786,38 +784,69 @@ def category_import_page(
         },
     )
 
-@app.post("/warehouse/import-batches/{batch_id}/undo")
-def undo_import_batch(
-    batch_id: int,
+
+@app.post("/warehouse/categories/{category_id}/import", response_class=HTMLResponse)
+def submit_category_import(
+    category_id: int,
     request: Request,
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     if not request.session.get("warehouse_access"):
         return redirect_to_login()
 
-    import_batch = db.get(ImportBatch, batch_id)
+    category = db.get(Category, category_id)
 
-    if import_batch is None:
-        request.session["category_notice"] = "Importação não encontrada."
+    if category is None:
+        request.session["category_notice"] = "Categoria não encontrada."
         request.session["category_notice_kind"] = "warning"
         return RedirectResponse(
             url="/warehouse/categories",
             status_code=303,
         )
 
-    category_id = import_batch.category_id
-    filename = import_batch.filename
+    original_filename = file.filename or "importacao.xlsx"
+    suffix = Path(original_filename).suffix.lower()
 
-    suffix = Path(filename).suffix.lower()
-    file_path = UPLOAD_DIR / f"{import_batch.id}{suffix}"
-    if file_path.exists():
-        file_path.unlink()
+    if suffix not in {".xlsx", ".xlsm"}:
+        return templates.TemplateResponse(
+            request=request,
+            name="category_import.html",
+            context={
+                "category": category,
+                "error": "Envie um arquivo Excel .xlsx ou .xlsm.",
+                "imported_count": None,
+            },
+            status_code=422,
+        )
 
-    db.delete(import_batch)
-    db.commit()
+    try:
+        import_batch = ImportBatch(
+            category_id=category_id,
+            filename=original_filename,
+        )
+        db.add(import_batch)
+        db.flush()  # garante o ID antes de gravar o arquivo
+
+        storage.upload_file(f"{import_batch.id}{suffix}", file.file.read())
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        return templates.TemplateResponse(
+            request=request,
+            name="category_import.html",
+            context={
+                "category": category,
+                "error": "Não foi possível salvar o arquivo. Tente novamente.",
+                "imported_count": None,
+            },
+            status_code=500,
+        )
 
     request.session["category_notice"] = (
-        f"A importação {filename} foi desfeita com sucesso."
+        f"Arquivo {original_filename} importado com sucesso em {category.name}."
     )
     request.session["category_notice_kind"] = "success"
     return RedirectResponse(
@@ -845,26 +874,11 @@ def undo_import_batch(
         )
 
     category_id = import_batch.category_id
-
-    products = db.scalars(
-        select(Product).where(
-            Product.import_batch_id == import_batch.id
-        )
-    ).all()
-
-    for product in products:
-        movements = db.scalars(
-            select(StockMovement).where(
-                StockMovement.product_id == product.id
-            )
-        ).all()
-
-        for movement in movements:
-            db.delete(movement)
-
-        db.delete(product)
-
     filename = import_batch.filename
+
+    suffix = Path(filename).suffix.lower()
+    storage.delete_file(f"{import_batch.id}{suffix}")
+
     db.delete(import_batch)
     db.commit()
 
