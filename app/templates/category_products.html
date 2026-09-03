@@ -62,8 +62,8 @@
       </a>
       {% endif %}
 
-      <form method="post" action="/warehouse/categories/{{ category.id }}/delete"
-        onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará esta categoria, seus itens e seu histórico. Esta ação não pode ser desfeita. Deseja continuar?');">
+      <form
+        method="post" action="/warehouse/categories/{{ category.id }}/delete" onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará esta categoria, seus itens e seu histórico. Esta ação não pode ser desfeita. Deseja continuar?');">
         <button type="submit" class="delete-category-button">
           Remover {{ "subcategoria" if category.parent_id else "categoria" }}
         </button>

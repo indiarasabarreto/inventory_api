@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Importar itens | Almoxarifado</title>
+  <title>Guardar planilha | Almoxarifado</title>
   <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
 </head>
 
@@ -25,10 +25,10 @@
 
   <main class="page-shell warehouse-shell">
     <section class="form-card import-card">
-      <p class="eyebrow">Cadastro em lote</p>
-      <h1>Importar itens</h1>
+      <p class="eyebrow">Arquivo da categoria</p>
+      <h1>Guardar planilha</h1>
       <p>
-        Os itens serão adicionados diretamente a
+        O arquivo será registrado no histórico de
         <strong>{{ category.name }}</strong>.
       </p>
 
@@ -36,30 +36,29 @@
       <p class="form-error">{{ error }}</p>
       {% endif %}
 
-      {% if imported_count is not none %}
-      <p class="notice">
-        {{ imported_count }} item(ns) importado(s) com sucesso.
-      </p>
-      {% endif %}
-
       <div class="import-help">
-        <h2>Formato da planilha</h2>
+        <h2>Como funciona</h2>
         <p>
-          Qualquer planilha <strong>.xlsx</strong> ou <strong>.xlsm</strong>
-          é aceita — sem exigência de nomes ou ordem de colunas.
-          O arquivo será salvo e associado a esta categoria.
+          Você pode enviar qualquer planilha Excel nos formatos
+          <strong>.xlsx</strong> ou <strong>.xlsm</strong>.
         </p>
-        <p class="field-hint">
-          Para desfazer, use o botão <strong>Desfazer importação</strong>
-          no histórico da categoria.
+
+        <p>
+          O arquivo será registrado no histórico desta categoria exatamente como foi enviado.
+          A aplicação não vai ler os cabeçalhos, interpretar os números nem criar itens
+          automaticamente no estoque.
+        </p>
+
+        <p>
+          Para remover o registro da planilha, use o botão
+          <strong>Desfazer importação</strong> na página da categoria.
         </p>
       </div>
 
       <form method="post" action="/warehouse/categories/{{ category.id }}/import" enctype="multipart/form-data">
         <label for="file">Arquivo Excel</label>
         <input id="file" name="file" type="file" accept=".xlsx,.xlsm" required>
-
-        <button type="submit">Importar itens</button>
+        <button type="submit">Guardar arquivo</button>
       </form>
     </section>
   </main>

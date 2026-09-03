@@ -2,8 +2,7 @@ import os
 import re
 import unicodedata
 
-from openpyxl import load_workbook
-from io import BytesIO
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, File, FastAPI, Form, HTTPException, Request, UploadFile, status
@@ -191,88 +190,6 @@ def parse_excel_integer(
         )
 
     return number
-
-def read_excel_products(file_content: bytes) -> list[dict[str, object]]:
-    """
-    Lê e valida uma planilha Excel.
-
-    As colunas podem ter nomes diferentes.
-    Colunas desconhecidas são ignoradas.
-
-    Retorna:
-
-        [
-            {
-                "name": "Vela branca",
-                "quantity": 10,
-                "minimum_quantity": 3,
-            }
-        ]
-    """
-
-    workbook = load_workbook(
-        filename=BytesIO(file_content),
-        read_only=True,
-        data_only=True,
-    )
-
-    worksheet = workbook.active
-
-    rows = worksheet.iter_rows(values_only=True)
-
-    try:
-        headers = next(rows)
-    except StopIteration:
-        raise ValueError("A planilha está vazia.")
-
-    columns = detect_excel_columns(list(headers))
-
-    products: list[dict[str, object]] = []
-
-    for row_number, row in enumerate(rows, start=2):
-        if not any(
-            value is not None and str(value).strip()
-            for value in row
-        ):
-            continue
-
-        name_value = row[columns["name"]]
-
-        name = str(name_value or "").strip()
-
-        if not name:
-            raise ValueError(
-                f"Linha {row_number}: o nome do produto é obrigatório."
-            )
-
-        quantity = parse_excel_integer(
-            row[columns["quantity"]],
-            "quantidade",
-            row_number,
-        )
-
-        minimum_quantity = parse_excel_integer(
-            row[columns["minimum_quantity"]],
-            "estoque mínimo",
-            row_number,
-        )
-
-        products.append(
-            {
-                "name": name,
-                "quantity": quantity,
-                "minimum_quantity": minimum_quantity,
-            }
-        )
-
-    workbook.close()
-
-    if not products:
-        raise ValueError(
-            "A planilha não contém nenhum produto válido."
-        )
-
-    return products
 
 @app.get("/", include_in_schema=False)
 def home():
@@ -1542,15 +1459,21 @@ def delete_category(
         for movement in movements:
             db.delete(movement)
 
-    # Depois remove os itens.
     for product in products:
         db.delete(product)
 
-    # Depois remove as subcategorias.
+    import_batches = db.scalars(
+        select(ImportBatch).where(
+            ImportBatch.category_id.in_(category_ids)
+        )
+    ).all()
+
+    for import_batch in import_batches:
+        db.delete(import_batch)
+
     for subcategory in subcategories:
         db.delete(subcategory)
 
-    # Por fim remove a categoria principal.
     category_name = category.name
     db.delete(category)
     db.commit()

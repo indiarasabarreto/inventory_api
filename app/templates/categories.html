@@ -94,8 +94,8 @@
             Ver itens
           </a>
 
-          <form method="post" action="/warehouse/categories/{{ category.id }}/delete"
-            onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará também todas as subcategorias, itens e movimentações vinculadas. Esta ação não pode ser desfeita. Deseja continuar?');">
+          <form
+            method="post" action="/warehouse/categories/{{ category.id }}/delete" onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará também todas as subcategorias, itens e movimentações vinculadas. Esta ação não pode ser desfeita. Deseja continuar?');">
             <button type="submit" class="delete-category-button">
               Remover
             </button>
