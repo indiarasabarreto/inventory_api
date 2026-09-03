@@ -1,5 +1,9 @@
 import os
+import re
+import unicodedata
 
+from openpyxl import load_workbook
+from io import BytesIO
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, File, FastAPI, Form, HTTPException, Request, UploadFile, status
@@ -11,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.security import SESSION_SECRET, is_valid_password
 from app import storage
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 import app.models
@@ -59,6 +63,216 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
+def normalize_column_name(value: object) -> str:
+    """
+    Normaliza o nome de uma coluna para facilitar o reconhecimento.
+
+    Exemplos:
+        "Estoque Mínimo" -> "estoque minimo"
+        "ESTOQUE_MINIMO" -> "estoque minimo"
+        " Nome do Produto " -> "nome do produto"
+    """
+    text = str(value or "").strip().lower()
+
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(
+        char
+        for char in text
+        if not unicodedata.combining(char)
+    )
+
+    text = re.sub(r"[_\-]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+def detect_excel_columns(headers: list[object]) -> dict[str, int]:
+    """
+    Identifica as colunas importantes da planilha.
+
+    Retorna um dicionário como:
+
+        {
+            "name": 0,
+            "quantity": 1,
+            "minimum_quantity": 2,
+        }
+    """
+
+    detected: dict[str, int] = {}
+
+    for index, header in enumerate(headers):
+        normalized = normalize_column_name(header)
+
+        if not normalized:
+            continue
+
+        for field_name, aliases in EXCEL_COLUMN_ALIASES.items():
+            normalized_aliases = {
+                normalize_column_name(alias)
+                for alias in aliases
+            }
+
+            if normalized in normalized_aliases:
+                if field_name in detected:
+                    raise ValueError(
+                        f"Mais de uma coluna foi identificada como "
+                        f"'{field_name}'."
+                    )
+
+                detected[field_name] = index
+                break
+
+    required_fields = {
+        "name": "nome/produto",
+        "quantity": "quantidade/estoque",
+        "minimum_quantity": "estoque mínimo",
+    }
+
+    missing = [
+        label
+        for field_name, label in required_fields.items()
+        if field_name not in detected
+    ]
+
+    if missing:
+        raise ValueError(
+            "Não foi possível identificar as colunas obrigatórias: "
+            + ", ".join(missing)
+            + "."
+        )
+
+    return detected
+
+def parse_excel_integer(
+    value: object,
+    field_name: str,
+    row_number: int,
+) -> int:
+    """
+    Converte um valor da planilha para inteiro.
+
+    Aceita, por exemplo:
+        10
+        10.0
+        "10"
+
+    Rejeita:
+        -5
+        "dez"
+        10.5
+    """
+
+    if value is None or str(value).strip() == "":
+        raise ValueError(
+            f"Linha {row_number}: o campo '{field_name}' é obrigatório."
+        )
+
+    try:
+        number = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Linha {row_number}: o campo '{field_name}' "
+            f"deve ser um número inteiro."
+        )
+
+    if not number.is_integer():
+        raise ValueError(
+            f"Linha {row_number}: o campo '{field_name}' "
+            f"deve ser um número inteiro."
+        )
+
+    number = int(number)
+
+    if number < 0:
+        raise ValueError(
+            f"Linha {row_number}: o campo '{field_name}' "
+            f"não pode ser negativo."
+        )
+
+    return number
+
+def read_excel_products(file_content: bytes) -> list[dict[str, object]]:
+    """
+    Lê e valida uma planilha Excel.
+
+    As colunas podem ter nomes diferentes.
+    Colunas desconhecidas são ignoradas.
+
+    Retorna:
+
+        [
+            {
+                "name": "Vela branca",
+                "quantity": 10,
+                "minimum_quantity": 3,
+            }
+        ]
+    """
+
+    workbook = load_workbook(
+        filename=BytesIO(file_content),
+        read_only=True,
+        data_only=True,
+    )
+
+    worksheet = workbook.active
+
+    rows = worksheet.iter_rows(values_only=True)
+
+    try:
+        headers = next(rows)
+    except StopIteration:
+        raise ValueError("A planilha está vazia.")
+
+    columns = detect_excel_columns(list(headers))
+
+    products: list[dict[str, object]] = []
+
+    for row_number, row in enumerate(rows, start=2):
+        if not any(
+            value is not None and str(value).strip()
+            for value in row
+        ):
+            continue
+
+        name_value = row[columns["name"]]
+
+        name = str(name_value or "").strip()
+
+        if not name:
+            raise ValueError(
+                f"Linha {row_number}: o nome do produto é obrigatório."
+            )
+
+        quantity = parse_excel_integer(
+            row[columns["quantity"]],
+            "quantidade",
+            row_number,
+        )
+
+        minimum_quantity = parse_excel_integer(
+            row[columns["minimum_quantity"]],
+            "estoque mínimo",
+            row_number,
+        )
+
+        products.append(
+            {
+                "name": name,
+                "quantity": quantity,
+                "minimum_quantity": minimum_quantity,
+            }
+        )
+
+    workbook.close()
+
+    if not products:
+        raise ValueError(
+            "A planilha não contém nenhum produto válido."
+        )
+
+    return products
 
 @app.get("/", include_in_schema=False)
 def home():
@@ -222,26 +436,67 @@ def create_stock_movement(
             detail="Product not found.",
         )
 
-    if (
-        movement_data.movement_type == "out"
-        and movement_data.quantity > product.quantity
-    ):
+    if movement_data.quantity <= 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Insufficient stock for this movement.",
+            detail="Quantity must be greater than zero.",
         )
 
-    if movement_data.movement_type == "in":
-        product.quantity += movement_data.quantity
-    else:
-        product.quantity -= movement_data.quantity
+    try:
+        if movement_data.movement_type == "in":
+            result = db.execute(
+                update(Product)
+                .where(Product.id == movement_data.product_id)
+                .values(
+                    quantity=Product.quantity + movement_data.quantity
+                )
+            )
 
-    movement = StockMovement(**movement_data.model_dump())
-    db.add(movement)
-    db.commit()
-    db.refresh(movement)
+        elif movement_data.movement_type == "out":
+            result = db.execute(
+                update(Product)
+                .where(
+                    Product.id == movement_data.product_id,
+                    Product.quantity >= movement_data.quantity,
+                )
+                .values(
+                    quantity=Product.quantity - movement_data.quantity
+                )
+            )
 
-    return movement
+            if result.rowcount != 1:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Insufficient stock for this movement.",
+                )
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid movement type.",
+            )
+
+        movement = StockMovement(
+            **movement_data.model_dump()
+        )
+
+        db.add(movement)
+
+        db.commit()
+        db.refresh(movement)
+
+        return movement
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not register stock movement.",
+        )
 
 @app.get(
     "/products/{product_id}/movements",
@@ -451,34 +706,59 @@ def submit_movement(
             status_code=303,
         )
 
-    if movement_type == "out" and quantity > product.quantity:
+    try:
+        if movement_type == "in":
+            result = db.execute(
+                update(Product)
+                .where(Product.id == product_id)
+                .values(quantity=Product.quantity + quantity)
+            )
+        else:
+            result = db.execute(
+                update(Product)
+                .where(
+                    Product.id == product_id,
+                    Product.quantity >= quantity,
+                )
+                .values(quantity=Product.quantity - quantity)
+            )
+
+            if result.rowcount != 1:
+                db.rollback()
+                request.session["notice"] = (
+                    f"Não há saldo suficiente de {product.name} para essa saída."
+                )
+                return RedirectResponse(
+                    url=f"/warehouse/movement/{movement_type}",
+                    status_code=303,
+                )
+
+        db.add(
+            StockMovement(
+                product_id=product.id,
+                movement_type=movement_type,
+                quantity=quantity,
+            )
+        )
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
         request.session["notice"] = (
-            f"Não há saldo suficiente de {product.name} para essa saída."
+            "Não foi possível registrar a movimentação."
         )
         return RedirectResponse(
             url=f"/warehouse/movement/{movement_type}",
             status_code=303,
         )
 
-    if movement_type == "in":
-        product.quantity += quantity
-    else:
-        product.quantity -= quantity
-
-    db.add(
-        StockMovement(
-            product_id=product.id,
-            movement_type=movement_type,
-            quantity=quantity,
-        )
-    )
-    db.commit()
-
     movement_label = "entrada" if movement_type == "in" else "saída"
     request.session["notice"] = (
         f"{movement_label.capitalize()} de {quantity} unidade(s) "
         f"de {product.name} registrada com sucesso."
     )
+
     return RedirectResponse(url="/warehouse", status_code=303)
 
 
