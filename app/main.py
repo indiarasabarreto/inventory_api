@@ -1,8 +1,12 @@
 import os
 import re
 import unicodedata
+import io
+import openpyxl
+import json
 
-
+from io import BytesIO
+from openpyxl import load_workbook
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, File, FastAPI, Form, HTTPException, Request, UploadFile, status
@@ -61,135 +65,6 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
-
-def normalize_column_name(value: object) -> str:
-    """
-    Normaliza o nome de uma coluna para facilitar o reconhecimento.
-
-    Exemplos:
-        "Estoque Mínimo" -> "estoque minimo"
-        "ESTOQUE_MINIMO" -> "estoque minimo"
-        " Nome do Produto " -> "nome do produto"
-    """
-    text = str(value or "").strip().lower()
-
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(
-        char
-        for char in text
-        if not unicodedata.combining(char)
-    )
-
-    text = re.sub(r"[_\-]+", " ", text)
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
-
-def detect_excel_columns(headers: list[object]) -> dict[str, int]:
-    """
-    Identifica as colunas importantes da planilha.
-
-    Retorna um dicionário como:
-
-        {
-            "name": 0,
-            "quantity": 1,
-            "minimum_quantity": 2,
-        }
-    """
-
-    detected: dict[str, int] = {}
-
-    for index, header in enumerate(headers):
-        normalized = normalize_column_name(header)
-
-        if not normalized:
-            continue
-
-        for field_name, aliases in EXCEL_COLUMN_ALIASES.items():
-            normalized_aliases = {
-                normalize_column_name(alias)
-                for alias in aliases
-            }
-
-            if normalized in normalized_aliases:
-                if field_name in detected:
-                    raise ValueError(
-                        f"Mais de uma coluna foi identificada como "
-                        f"'{field_name}'."
-                    )
-
-                detected[field_name] = index
-                break
-
-    required_fields = {
-        "name": "nome/produto",
-        "quantity": "quantidade/estoque",
-        "minimum_quantity": "estoque mínimo",
-    }
-
-    missing = [
-        label
-        for field_name, label in required_fields.items()
-        if field_name not in detected
-    ]
-
-    if missing:
-        raise ValueError(
-            "Não foi possível identificar as colunas obrigatórias: "
-            + ", ".join(missing)
-            + "."
-        )
-
-    return detected
-
-def parse_excel_integer(
-    value: object,
-    field_name: str,
-    row_number: int,
-) -> int:
-    """
-    Converte um valor da planilha para inteiro.
-
-    Aceita, por exemplo:
-        10
-        10.0
-        "10"
-
-    Rejeita:
-        -5
-        "dez"
-        10.5
-    """
-
-    if value is None or str(value).strip() == "":
-        raise ValueError(
-            f"Linha {row_number}: o campo '{field_name}' é obrigatório."
-        )
-
-    try:
-        number = float(str(value).replace(",", "."))
-    except (TypeError, ValueError):
-        raise ValueError(
-            f"Linha {row_number}: o campo '{field_name}' "
-            f"deve ser um número inteiro."
-        )
-
-    if not number.is_integer():
-        raise ValueError(
-            f"Linha {row_number}: o campo '{field_name}' "
-            f"deve ser um número inteiro."
-        )
-
-    number = int(number)
-
-    if number < 0:
-        raise ValueError(
-            f"Linha {row_number}: o campo '{field_name}' "
-            f"não pode ser negativo."
-        )
-
-    return number
 
 @app.get("/", include_in_schema=False)
 def home():
@@ -942,6 +817,12 @@ def category_products_page(
         .order_by(ImportBatch.created_at.desc())
     ).all()
 
+    for batch in import_batches:
+        try:
+            batch.preview_rows = json.loads(batch.preview_data or "[]")
+        except (TypeError, json.JSONDecodeError):
+            batch.preview_rows = []
+
     return templates.TemplateResponse(
         request=request,
         name="category_products.html",
@@ -1018,14 +899,46 @@ def submit_category_import(
         )
 
     try:
+        file_content = file.file.read()
+
+        workbook = load_workbook(
+            filename=BytesIO(file_content),
+            read_only=True,
+            data_only=True,
+        )
+        worksheet = workbook.active
+
+        preview_rows = []
+        for row in worksheet.iter_rows(
+            min_row=1,
+            max_row=50,
+            max_col=20,
+            values_only=True,
+        ):
+            preview_rows.append([
+                "" if value is None else str(value)
+                for value in row
+            ])
+
+        workbook.close()
+
+        preview_data = json.dumps(
+            preview_rows,
+            ensure_ascii=False,
+        )
+
         import_batch = ImportBatch(
             category_id=category_id,
             filename=original_filename,
+            preview_data=preview_data,
         )
         db.add(import_batch)
-        db.flush()  # garante o ID antes de gravar o arquivo
+        db.flush()
 
-        storage.upload_file(f"{import_batch.id}{suffix}", file.file.read())
+        storage.upload_file(
+            f"{import_batch.id}{suffix}",
+            file_content,
+        )
 
         db.commit()
 

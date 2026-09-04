@@ -62,8 +62,8 @@
       </a>
       {% endif %}
 
-      <form
-        method="post" action="/warehouse/categories/{{ category.id }}/delete" onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará esta categoria, seus itens e seu histórico. Esta ação não pode ser desfeita. Deseja continuar?');">
+      <form method="post" action="/warehouse/categories/{{ category.id }}/delete"
+        onsubmit="return confirm('ATENÇÃO: remover {{ category.name }} apagará esta categoria, seus itens e seu histórico. Esta ação não pode ser desfeita. Deseja continuar?');">
         <button type="submit" class="delete-category-button">
           Remover {{ "subcategoria" if category.parent_id else "categoria" }}
         </button>
@@ -96,6 +96,33 @@
               Desfazer importação
             </button>
           </form>
+
+          {% if batch.preview_rows %}
+          <div class="import-preview">
+            <h3>Visualização da planilha</h3>
+            <div class="table-scroll">
+              <table class="import-preview-table">
+                <caption>
+                  Primeiras linhas da primeira aba; os itens não foram adicionados ao estoque.
+                </caption>
+                <tbody>
+                  {% for row in batch.preview_rows %}
+                  <tr>
+                    <th scope="row">{{ loop.index }}</th>
+                    {% for cell in row %}
+                    <td>{{ cell }}</td>
+                    {% endfor %}
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% else %}
+          <p class="import-preview-empty">
+            Não foi possível gerar uma visualização para este arquivo.
+          </p>
+          {% endif %}
         </article>
         {% endfor %}
       </div>

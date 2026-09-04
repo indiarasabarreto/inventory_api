@@ -1444,3 +1444,65 @@ form .delete-category-button:focus-visible {
     padding: 0 !important;
   }
 }
+
+.import-preview {
+  border-top: 1px solid #eadfea;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  width: 100%;
+}
+
+.import-preview h3 {
+  color: #4d2e60;
+  font-size: 1rem;
+  margin: 0 0 0.65rem;
+}
+
+.import-preview .table-scroll {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.import-preview-table {
+  border-collapse: collapse;
+  min-width: 34rem;
+  width: max-content;
+}
+
+.import-preview-table caption {
+  color: #76647b;
+  font-size: 0.78rem;
+  padding: 0 0 0.55rem;
+  text-align: left;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+  border: 1px solid #d9cce0;
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.import-preview-table th {
+  background: #f0e7f4;
+  color: #6f4b7e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  width: 2.5rem;
+}
+
+.import-preview-table td {
+  background: #ffffff;
+  color: #55495b;
+  font-size: 0.86rem;
+}
+
+.import-preview-empty {
+  color: #76647b;
+  font-size: 0.85rem;
+  margin: 0.9rem 0 0;
+}
