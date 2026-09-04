@@ -1506,3 +1506,26 @@ form .delete-category-button:focus-visible {
   font-size: 0.85rem;
   margin: 0.9rem 0 0;
 }
+
+/* A prévia ocupa uma linha própria dentro do cartão da importação */
+.import-history-card {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.import-history-card > div.import-preview {
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .import-history-card {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .import-history-card > div.import-preview {
+    flex-basis: auto;
+  }
+}
