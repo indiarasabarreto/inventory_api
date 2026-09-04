@@ -902,35 +902,33 @@ def submit_category_import(
         file_content = file.file.read()
 
         workbook = load_workbook(
-            filename=BytesIO(file_content),
-            read_only=True,
-            data_only=True,
-        )
+                filename=BytesIO(file_content),
+                read_only=True,
+                data_only=True,
+            )
         worksheet = workbook.active
 
         preview_rows = []
         for row in worksheet.iter_rows(
-            min_row=1,
-            max_row=50,
-            max_col=20,
-            values_only=True,
-        ):
-            preview_rows.append([
-                "" if value is None else str(value)
-                for value in row
-            ])
+                min_row=1,
+                max_row=50,
+                max_col=20,
+                values_only=True,
+            ):
+                preview_rows.append([
+                    "" if value is None else str(value)
+                    for value in row
+                ])
 
         workbook.close()
-
-        preview_data = json.dumps(
-            preview_rows,
-            ensure_ascii=False,
-        )
 
         import_batch = ImportBatch(
             category_id=category_id,
             filename=original_filename,
-            preview_data=preview_data,
+            preview_data=json.dumps(
+                preview_rows,
+                ensure_ascii=False,
+            ),
         )
         db.add(import_batch)
         db.flush()
