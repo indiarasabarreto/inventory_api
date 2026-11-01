@@ -18,7 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.security import SESSION_SECRET, is_valid_password
 from app import storage
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 import app.models
@@ -36,12 +36,80 @@ from app.schemas import (
 )
 
 
+def apply_min_quantity_one_time():
+    """Roda UMA única vez: itens com estoque mínimo 3 passam a ter mínimo 1.
+
+    Uma marca na tabela app_flags garante que isso não se repita nas próximas
+    inicializações (assim, se você definir mínimo 3 de propósito no futuro,
+    ele será respeitado).
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("CREATE TABLE IF NOT EXISTS app_flags (name VARCHAR(100) PRIMARY KEY)")
+            )
+            already_done = conn.execute(
+                text("SELECT 1 FROM app_flags WHERE name = 'min_quantity_3_to_1'")
+            ).first()
+            if already_done:
+                return
+            conn.execute(
+                text("UPDATE products SET minimum_quantity = 1 WHERE minimum_quantity = 3")
+            )
+            conn.execute(
+                text("INSERT INTO app_flags (name) VALUES ('min_quantity_3_to_1')")
+            )
+    except Exception as exc:  # se a tabela ainda não existir, tenta de novo na próxima subida
+        print(f"[aviso] ajuste do estoque mínimo adiado: {exc}")
+
+
+def build_low_stock_groups(products):
+    """Agrupa os itens que precisam de reposição por categoria (esgotados primeiro)."""
+    groups: dict[str, list[dict]] = {}
+
+    for product in products:
+        if product.quantity > product.minimum_quantity:
+            continue
+
+        category = product.category
+        if category.parent is not None:
+            label = f"{category.parent.name} › {category.name}"
+        else:
+            label = category.name
+
+        groups.setdefault(label, []).append(
+            {
+                "id": product.id,
+                "name": product.name,
+                "quantity": product.quantity,
+                "minimum": product.minimum_quantity,
+                "out": product.quantity <= 0,
+            }
+        )
+
+    result = []
+    for label, entries in groups.items():
+        entries.sort(key=lambda e: (not e["out"], e["quantity"], e["name"].lower()))
+        result.append(
+            {
+                "name": label,
+                "entries": entries,
+                "out_count": sum(1 for e in entries if e["out"]),
+            }
+        )
+
+    result.sort(key=lambda g: (-g["out_count"], g["name"].lower()))
+    return result
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # No SQLite local, mantém a criação automática usada durante o desenvolvimento.
     # No PostgreSQL da nuvem, as tabelas serão criadas somente pelo Alembic.
     if DATABASE_URL.startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
+
+    apply_min_quantity_one_time()
 
     yield
 
@@ -358,7 +426,7 @@ def warehouse_page(
 
     products = db.scalars(
         select(Product)
-        .options(selectinload(Product.category))
+        .options(selectinload(Product.category).selectinload(Category.parent))
         .order_by(Product.name)
     ).all()
 
@@ -367,6 +435,8 @@ def warehouse_page(
         for product in products
         if product.quantity <= product.minimum_quantity
     ]
+    low_stock_groups = build_low_stock_groups(products)
+    low_stock_out = sum(1 for product in low_stock_products if product.quantity <= 0)
 
     categories = db.scalars(
         select(Category)
@@ -383,6 +453,10 @@ def warehouse_page(
             "products": products,
             "categories": categories,
             "low_stock_products": low_stock_products,
+            "low_stock_groups": low_stock_groups,
+            "low_stock_total": len(low_stock_products),
+            "low_stock_out": low_stock_out,
+            "low_stock_low": len(low_stock_products) - low_stock_out,
             "notice": notice,
         },
     )
@@ -560,7 +634,7 @@ def submit_new_product(
     request: Request,
     name: str = Form(...),
     initial_quantity: int = Form(0),
-    minimum_quantity: int = Form(3),
+    minimum_quantity: int = Form(1),
     category_id: int = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -1260,7 +1334,7 @@ def submit_new_product(
     request: Request,
     name: str = Form(...),
     initial_quantity: int = Form(0),
-    minimum_quantity: int = Form(3),
+    minimum_quantity: int = Form(1),
     category_id: int = Form(...),
     db: Session = Depends(get_db),
 ):

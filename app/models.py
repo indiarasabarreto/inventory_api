@@ -66,8 +66,8 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     quantity: Mapped[int] = mapped_column(default=0, nullable=False)
     minimum_quantity: Mapped[int] = mapped_column(
-        default=3,
-        server_default="3",
+        default=1,
+        server_default="1",
         nullable=False,
     )
     category_id: Mapped[int] = mapped_column(

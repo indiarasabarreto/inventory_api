@@ -34,14 +34,14 @@ class ProductCreate(BaseModel):
         examples=["Vela branca"],
     )
     quantity: int = Field(default=0, ge=0, examples=[10])
-    minimum_quantity: int = Field(default=3, ge=0, examples=[3])
+    minimum_quantity: int = Field(default=1, ge=0, examples=[1])
     category_id: int = Field(gt=0, examples=[1])
 
 
 class ProductUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     category_id: int = Field(gt=0)
-    minimum_quantity: int = Field(default=3, ge=0, examples=[3])
+    minimum_quantity: int = Field(default=1, ge=0, examples=[1])
 
 
 class ProductResponse(BaseModel):
