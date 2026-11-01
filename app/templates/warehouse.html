@@ -5,7 +5,104 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Estoque | Almoxarifado</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}?v=20261101">
+  <style>
+    /* ===== Painel de reposição ===== */
+    [hidden] { display: none !important; }
+
+    .replenish { padding: 1.25rem; }
+    .replenish h2 { margin: .2rem 0 .15rem; font-size: 1.3rem; }
+    .replenish .rp-sub { margin: 0 0 1.1rem; color: #76647b; font-size: .92rem; }
+
+    .rp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: 1rem; }
+    .rp-stat {
+      align-items: center; background: #fff; border: 2px solid transparent; border-radius: .9rem;
+      box-shadow: 0 .15rem .5rem rgba(77, 46, 96, .08); cursor: pointer; display: flex; font: inherit;
+      gap: .75rem; padding: .8rem 1rem; text-align: left; transition: transform .12s ease, border-color .12s ease;
+    }
+    .rp-stat:hover { transform: translateY(-1px); }
+    .rp-stat strong { font-size: 2rem; line-height: 1; }
+    .rp-stat span { color: #4d2e60; font-size: .85rem; font-weight: 700; line-height: 1.2; }
+    .rp-stat small { color: #76647b; display: block; font-weight: 500; }
+    .rp-stat-out { border-left: 6px solid #c0392b; }
+    .rp-stat-out strong { color: #b3261e; }
+    .rp-stat-low { border-left: 6px solid #e0a122; }
+    .rp-stat-low strong { color: #a86a00; }
+    .rp-stat.is-active { border-color: #69427f; background: #faf6fc; }
+
+    .rp-tools { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .85rem; }
+    .rp-search {
+      background: #fff; border: 1px solid #caa9d8; border-radius: .7rem; color: inherit; flex: 1 1 12rem;
+      font: inherit; min-width: 0; padding: .65rem .85rem;
+    }
+    .rp-search:focus { outline: 2px solid #b48ac9; outline-offset: 1px; }
+    .rp-toggle, .rp-toggle:hover, .rp-toggle:focus-visible {
+      background: #fff; border: 1px solid #caa9d8; border-radius: .7rem; color: #4d2e60; cursor: pointer;
+      font: inherit; font-weight: 700; padding: .65rem 1rem;
+    }
+    .rp-toggle:hover, .rp-toggle:focus-visible { background: #f3e8f8; border-color: #69427f; }
+
+    .rp-groups { display: grid; gap: .6rem; }
+    .rp-group {
+      background: #fff; border: 1px solid #e3d3ea; border-left: 5px solid #e0a122; border-radius: .8rem;
+      box-shadow: 0 .1rem .4rem rgba(77, 46, 96, .06); overflow: hidden;
+    }
+    .rp-group.has-out { border-left-color: #c0392b; }
+    .rp-group > summary {
+      align-items: center; color: #3a2347; cursor: pointer; display: flex; gap: .7rem; list-style: none;
+      padding: .8rem .9rem;
+    }
+    .rp-group > summary::-webkit-details-marker { display: none; }
+    .rp-group > summary:hover { background: #faf6fc; }
+    .rp-chevron {
+      align-items: center; background: #f1e6f6; border-radius: 50%; display: inline-flex; flex: none;
+      height: 1.7rem; justify-content: center; width: 1.7rem;
+    }
+    .rp-chevron::before {
+      border-bottom: 5px solid transparent; border-left: 7px solid #69427f; border-top: 5px solid transparent;
+      content: ""; height: 0; margin-left: 2px; transition: transform .15s ease; width: 0;
+    }
+    .rp-group[open] .rp-chevron::before { transform: rotate(90deg); margin-left: 0; }
+    .rp-group-name { flex: 1; font-size: 1.02rem; font-weight: 800; min-width: 0; overflow-wrap: anywhere; }
+    .rp-group-meta { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; }
+
+    .chip {
+      background: #ece1f3; border-radius: 999px; color: #4d2e60; font-size: .74rem; font-weight: 800;
+      padding: .22rem .65rem; white-space: nowrap;
+    }
+    .chip-out { background: #fbe0de; color: #9a2b2b; }
+
+    .rp-items {
+      border-top: 1px solid #f0e8f2; display: grid; gap: .4rem; list-style: none; margin: 0;
+      max-height: 20rem; overflow-y: auto; padding: .6rem;
+    }
+    .rp-items li {
+      align-items: center; background: #fcfafd; border: 1px solid #f0e8f2; border-radius: .7rem;
+      display: grid; gap: .75rem; grid-template-columns: auto 1fr auto; padding: .5rem .65rem;
+    }
+    .rp-qty {
+      align-items: center; border-radius: 50%; display: inline-flex; font-size: 1.05rem; font-weight: 800;
+      height: 2.4rem; justify-content: center; width: 2.4rem;
+    }
+    .is-out .rp-qty { background: #fbe0de; color: #9a2b2b; }
+    .is-low .rp-qty { background: #fdebc8; color: #8a5200; }
+    .rp-info { display: grid; min-width: 0; }
+    .rp-info .item-name { color: #2d2336; font-weight: 700; overflow-wrap: anywhere; }
+    .rp-info small { color: #76647b; }
+    .status-pill {
+      border-radius: 999px; font-size: .7rem; font-weight: 800; letter-spacing: .03em; padding: .25rem .65rem;
+      text-transform: uppercase; white-space: nowrap;
+    }
+    .is-out .status-pill { background: #fbe0de; color: #9a2b2b; }
+    .is-low .status-pill { background: #fdebc8; color: #8a5200; }
+    .rp-empty { color: #76647b; margin: .5rem 0 0; text-align: center; }
+
+    @media (max-width: 520px) {
+      .rp-stat strong { font-size: 1.7rem; }
+      .rp-group > summary { flex-wrap: wrap; }
+      .rp-group-meta { justify-content: flex-start; width: 100%; padding-left: 2.4rem; }
+    }
+  </style>
 </head>
 
 <body>
@@ -34,35 +131,36 @@
 
     {% if low_stock_total %}
     <section class="low-stock-card replenish" aria-labelledby="low-stock-title">
-      <div class="replenish-head">
-        <div>
-          <p class="eyebrow">Reposição necessária</p>
-          <h2 id="low-stock-title">
-            {{ low_stock_total }} {{ "item precisa" if low_stock_total == 1 else "itens precisam" }} de reposição
-          </h2>
-        </div>
-        <div class="replenish-chips">
-          {% if low_stock_out %}
-          <span class="chip chip-out">{{ low_stock_out }} esgotado{{ "" if low_stock_out == 1 else "s" }}</span>
-          {% endif %}
-          {% if low_stock_low %}
-          <span class="chip chip-low">{{ low_stock_low }} acabando</span>
-          {% endif %}
-        </div>
+      <p class="eyebrow">Reposição necessária</p>
+      <h2 id="low-stock-title">
+        {{ low_stock_total }} {{ "item precisa" if low_stock_total == 1 else "itens precisam" }} de reposição
+      </h2>
+      <p class="rp-sub">Comece pelos esgotados. Toque em um número para filtrar a lista.</p>
+
+      <div class="rp-stats">
+        <button type="button" class="rp-stat rp-stat-out" data-filter="out" {% if not low_stock_out %}disabled{% endif %}>
+          <strong>{{ low_stock_out }}</strong>
+          <span>esgotado{{ "" if low_stock_out == 1 else "s" }}<small>0 em estoque</small></span>
+        </button>
+        <button type="button" class="rp-stat rp-stat-low" data-filter="low" {% if not low_stock_low %}disabled{% endif %}>
+          <strong>{{ low_stock_low }}</strong>
+          <span>acabando<small>no estoque mínimo</small></span>
+        </button>
       </div>
 
-      <div class="replenish-tools">
-        <input type="search" id="replenishSearch" class="replenish-search" placeholder="Buscar item para repor…"
+      <div class="rp-tools">
+        <input type="search" id="rpSearch" class="rp-search" placeholder="Buscar item para repor…"
           aria-label="Buscar item para repor">
-        <button type="button" class="replenish-toggle" id="replenishToggle">Abrir todas</button>
+        <button type="button" class="rp-toggle" id="rpToggle">Abrir todas</button>
       </div>
 
-      <div class="replenish-groups">
+      <div class="rp-groups">
         {% for group in low_stock_groups %}
-        <details class="replenish-group" {% if loop.first %}open{% endif %}>
+        <details class="rp-group {% if group.out_count %}has-out{% endif %}" {% if loop.first %}open{% endif %}>
           <summary>
-            <span class="group-name">{{ group.name }}</span>
-            <span class="group-meta">
+            <span class="rp-chevron" aria-hidden="true"></span>
+            <span class="rp-group-name">{{ group.name }}</span>
+            <span class="rp-group-meta">
               {% if group.out_count %}
               <span class="chip chip-out">{{ group.out_count }} esgotado{{ "" if group.out_count == 1 else "s" }}</span>
               {% endif %}
@@ -70,18 +168,22 @@
             </span>
           </summary>
 
-          <ul class="replenish-items">
+          <ul class="rp-items">
             {% for item in group.entries %}
-            <li class="{{ 'is-out' if item.out else 'is-low' }}" data-name="{{ item.name|lower }}">
-              <span class="item-name">{{ item.name }}</span>
-              <span class="item-stock"><b>{{ item.quantity }}</b> em estoque · mín. {{ item.minimum }}</span>
+            <li class="{{ 'is-out' if item.out else 'is-low' }}" data-status="{{ 'out' if item.out else 'low' }}"
+              data-name="{{ item.name|lower }}">
+              <span class="rp-qty">{{ item.quantity }}</span>
+              <span class="rp-info">
+                <span class="item-name">{{ item.name }}</span>
+                <small>em estoque · mínimo {{ item.minimum }}</small>
+              </span>
               <span class="status-pill">{{ "Esgotado" if item.out else "Acabando" }}</span>
             </li>
             {% endfor %}
           </ul>
         </details>
         {% endfor %}
-        <p class="replenish-empty" id="replenishEmpty" hidden>Nenhum item encontrado.</p>
+        <p class="rp-empty" id="rpEmpty" hidden>Nenhum item encontrado.</p>
       </div>
     </section>
     {% endif %}
@@ -185,11 +287,13 @@
 
   <script>
     (function () {
-      var search = document.getElementById('replenishSearch');
+      var search = document.getElementById('rpSearch');
       if (!search) return;
-      var groups = [].slice.call(document.querySelectorAll('.replenish-group'));
-      var empty = document.getElementById('replenishEmpty');
-      var toggle = document.getElementById('replenishToggle');
+      var groups = [].slice.call(document.querySelectorAll('.rp-group'));
+      var stats = [].slice.call(document.querySelectorAll('.rp-stat'));
+      var empty = document.getElementById('rpEmpty');
+      var toggle = document.getElementById('rpToggle');
+      var filter = '';
 
       function apply() {
         var q = search.value.trim().toLowerCase();
@@ -197,23 +301,41 @@
         groups.forEach(function (g) {
           var shown = 0;
           g.querySelectorAll('li').forEach(function (li) {
-            var ok = !q || li.getAttribute('data-name').indexOf(q) !== -1;
+            var ok = (!q || li.getAttribute('data-name').indexOf(q) !== -1) &&
+                     (!filter || li.getAttribute('data-status') === filter);
             li.hidden = !ok;
             if (ok) shown++;
           });
           g.hidden = shown === 0;
           if (shown) any = true;
-          if (q && shown) g.open = true;
+          if ((q || filter) && shown) g.open = true;
         });
         empty.hidden = any;
       }
 
       search.addEventListener('input', apply);
-      toggle.addEventListener('click', function () {
-        var open = groups.some(function (g) { return !g.open; });
-        groups.forEach(function (g) { if (!g.hidden) g.open = open; });
-        toggle.textContent = open ? 'Recolher todas' : 'Abrir todas';
+
+      stats.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var f = btn.getAttribute('data-filter');
+          filter = (filter === f) ? '' : f;
+          stats.forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-filter') === filter); });
+          apply();
+        });
       });
+
+      function syncLabel() {
+        var visible = groups.filter(function (g) { return !g.hidden; });
+        var allOpen = visible.length > 0 && visible.every(function (g) { return g.open; });
+        toggle.textContent = allOpen ? 'Recolher todas' : 'Abrir todas';
+      }
+
+      toggle.addEventListener('click', function () {
+        var open = groups.some(function (g) { return !g.hidden && !g.open; });
+        groups.forEach(function (g) { if (!g.hidden) g.open = open; });
+        syncLabel();
+      });
+      groups.forEach(function (g) { g.addEventListener('toggle', syncLabel); });
     })();
   </script>
 </body>
